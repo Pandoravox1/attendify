@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { DatePicker, TimeInput } from '@nextui-org/react';
 import { Time, parseDate } from '@internationalized/date';
 import attendifyLogo from './assets/attendify-logo.png';
-import { BookOpen as PhBookOpen, CalendarBlank, SquaresFour, Student, UserCheck } from '@phosphor-icons/react';
+import { BookOpen as PhBookOpen, CalendarBlank, EnvelopeSimple, Eye as PhEye, EyeSlash, LockKey, SquaresFour, Student, UserCheck } from '@phosphor-icons/react';
 import { 
   LayoutGrid, 
   Users, 
@@ -15,6 +16,8 @@ import {
   ChevronRight,
   Plus, 
   Menu,
+  Maximize2,
+  Minimize2,
   Trash2,
   Edit3,
   Calendar,
@@ -23,12 +26,8 @@ import {
   Home,
   Briefcase,
   LogIn,
-  Lock,
-  Eye,
-  EyeOff,
   ArrowRight,
   Loader2,
-  Mail,
   User,
   Phone,
   MapPin,
@@ -117,6 +116,49 @@ const styleTag = `
   .macos-select option {
     background-color: #141414;
     color: #f1f5f9;
+  }
+
+  .auth-icon svg,
+  .auth-icon svg * {
+    color: #ffffff !important;
+    fill: #ffffff !important;
+    stroke: #ffffff !important;
+    opacity: 1 !important;
+    filter: none !important;
+  }
+
+  .macos-loading-panel {
+    background: rgba(20, 20, 28, 0.6);
+    backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  }
+
+  .macos-spinner {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    border-top-color: rgba(255, 255, 255, 0.85);
+    animation: macosSpin 0.8s linear infinite;
+  }
+
+  .macos-spinner-sm {
+    width: 18px;
+    height: 18px;
+    border-width: 2px;
+  }
+
+  .macos-tooltip {
+    background: rgba(18, 18, 24, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  @keyframes macosSpin {
+    to { transform: rotate(360deg); }
   }
 
   /* Navigation & Interactive Elements */
@@ -213,12 +255,12 @@ const INITIAL_CLASSES = [
 ];
 
 const INITIAL_STUDENTS = [
-  { id: 1, classId: 1, name: "Alex Chen", avatar: "AC", status: 'Present', attitude: 'ME', grades: { Quiz: 85, Midterm: 92, Project: 88 } },
-  { id: 2, classId: 1, name: "Sarah Johnson", avatar: "SJ", status: 'Present', attitude: 'EE', grades: { Quiz: 92, Midterm: 88, Project: 95 } },
-  { id: 3, classId: 1, name: "Michael Davis", avatar: "MD", status: 'Late', attitude: 'ME', grades: { Quiz: 78, Midterm: 75, Project: 82 } },
-  { id: 4, classId: 2, name: "Emily Wilson", avatar: "EW", status: 'Absent', attitude: 'DME', grades: { Quiz: 95, Midterm: 96, Project: 98 } },
-  { id: 5, classId: 2, name: "Jessica Taylor", avatar: "JT", status: 'Excused', attitude: 'ME', grades: { Quiz: 88, Midterm: 90, Project: 85 } },
-  { id: 6, classId: 3, name: "David Brown", avatar: "DB", status: 'Present', attitude: 'ME', grades: { Quiz: 72, Midterm: 68, Project: 75 } },
+  { id: 1, classId: 1, name: "Alex Chen", avatar: "AC", status: 'Present', attitude: 'ME', zeroExclusions: {}, zeroExclusionNotes: {}, grades: { Quiz: 85, Midterm: 92, Project: 88 } },
+  { id: 2, classId: 1, name: "Sarah Johnson", avatar: "SJ", status: 'Present', attitude: 'EE', zeroExclusions: {}, zeroExclusionNotes: {}, grades: { Quiz: 92, Midterm: 88, Project: 95 } },
+  { id: 3, classId: 1, name: "Michael Davis", avatar: "MD", status: 'Late', attitude: 'ME', zeroExclusions: {}, zeroExclusionNotes: {}, grades: { Quiz: 78, Midterm: 75, Project: 82 } },
+  { id: 4, classId: 2, name: "Emily Wilson", avatar: "EW", status: 'Absent', attitude: 'DME', zeroExclusions: {}, zeroExclusionNotes: {}, grades: { Quiz: 95, Midterm: 96, Project: 98 } },
+  { id: 5, classId: 2, name: "Jessica Taylor", avatar: "JT", status: 'Excused', attitude: 'ME', zeroExclusions: {}, zeroExclusionNotes: {}, grades: { Quiz: 88, Midterm: 90, Project: 85 } },
+  { id: 6, classId: 3, name: "David Brown", avatar: "DB", status: 'Present', attitude: 'ME', zeroExclusions: {}, zeroExclusionNotes: {}, grades: { Quiz: 72, Midterm: 68, Project: 75 } },
 ];
 
 const STATUS_OPTIONS = [
@@ -286,6 +328,8 @@ const safeNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const isSameClassId = (left, right) => String(left ?? '') === String(right ?? '');
+
 const normalizeAssessmentTypes = (value) => {
   if (!Array.isArray(value)) return [...DEFAULT_ASSESSMENTS];
   const trimmed = value
@@ -294,16 +338,38 @@ const normalizeAssessmentTypes = (value) => {
   return trimmed.length ? Array.from(new Set(trimmed)) : [...DEFAULT_ASSESSMENTS];
 };
 
-const calculateGradesAverage = (grades, assessmentTypes) => {
+const normalizeZeroExclusions = (value) => {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [String(key), Boolean(entry)])
+  );
+};
+
+const normalizeZeroExclusionNotes = (value) => {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [String(key), String(entry || '')])
+  );
+};
+
+const getGradesAverageInfo = (grades, assessmentTypes, zeroExclusions = {}) => {
   const types = Array.isArray(assessmentTypes) && assessmentTypes.length
     ? assessmentTypes
     : DEFAULT_ASSESSMENTS;
-  if (!grades || typeof grades !== 'object') return 0;
-  const values = types.map(type => safeNumber(grades[type]));
-  if (!values.length) return 0;
-  const total = values.reduce((acc, value) => acc + value, 0);
-  return Math.round(total / values.length);
+  if (!grades || typeof grades !== 'object') return { avg: 0, hasScores: false };
+  const exclusions = normalizeZeroExclusions(zeroExclusions);
+  const values = types.map(type => ({ type, value: safeNumber(grades[type]) }));
+  if (!values.length) return { avg: 0, hasScores: false };
+
+  const counted = values.filter(({ type, value }) => !(value === 0 && exclusions[type] !== false));
+  if (!counted.length) return { avg: 0, hasScores: false };
+  const total = counted.reduce((acc, entry) => acc + entry.value, 0);
+  return { avg: Math.round(total / counted.length), hasScores: true };
 };
+
+const calculateGradesAverage = (grades, assessmentTypes, zeroExclusions = {}) => (
+  getGradesAverageInfo(grades, assessmentTypes, zeroExclusions).avg
+);
 
 const getAttitudeScore = (value) => ATTITUDE_SCORES[value] ?? 0;
 
@@ -395,6 +461,8 @@ const mapStudentRow = (row) => {
     status: normalizeStatus(row.status),
     attendanceTime: row.attendance_time || null,
     attitude: row.attitude || 'ME',
+    zeroExclusions: normalizeZeroExclusions(row.zero_exclusions),
+    zeroExclusionNotes: normalizeZeroExclusionNotes(row.zero_exclusion_notes),
     grades: normalizedGrades,
   };
 };
@@ -709,10 +777,16 @@ const LoginScreen = ({ onLogin }) => {
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-300 ml-1 uppercase tracking-wide">Email Address</label>
             <div className="relative">
-              <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <span className="auth-icon absolute left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+                <EnvelopeSimple
+                  size={16}
+                  weight="bold"
+                  style={{ color: '#ffffff', opacity: 1, filter: 'none' }}
+                />
+              </span>
               <input 
                 type="email"
-                className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder-gray-500 macos-input outline-none focus:ring-1 focus:ring-blue-500/50"
+                className="relative z-0 w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder-gray-500 macos-input outline-none focus:ring-1 focus:ring-blue-500/50"
                 value={credentials.email}
                 onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
                 required
@@ -723,10 +797,16 @@ const LoginScreen = ({ onLogin }) => {
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-300 ml-1 uppercase tracking-wide">Password</label>
             <div className="relative">
-              <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <span className="auth-icon absolute left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+                <LockKey
+                  size={16}
+                  weight="bold"
+                  style={{ color: '#ffffff', opacity: 1, filter: 'none' }}
+                />
+              </span>
               <input 
                 type={showPassword ? "text" : "password"}
-                className="w-full pl-10 pr-10 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder-gray-500 macos-input outline-none focus:ring-1 focus:ring-blue-500/50"
+                className="relative z-0 w-full pl-10 pr-10 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder-gray-500 macos-input outline-none focus:ring-1 focus:ring-blue-500/50"
                 value={credentials.password}
                 onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
                 required
@@ -734,9 +814,15 @@ const LoginScreen = ({ onLogin }) => {
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors p-1"
+                className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors p-1 z-10"
               >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                <span className="auth-icon">
+                  {showPassword ? (
+                    <EyeSlash size={16} weight="bold" style={{ color: '#ffffff', opacity: 1, filter: 'none' }} />
+                  ) : (
+                    <PhEye size={16} weight="bold" style={{ color: '#ffffff', opacity: 1, filter: 'none' }} />
+                  )}
+                </span>
               </button>
             </div>
           </div>
@@ -770,23 +856,44 @@ const LoginScreen = ({ onLogin }) => {
 // --- DASHBOARD COMPONENTS ---
 
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
-  if (!isOpen) return null;
   const sizeClasses = {
     sm: 'max-w-sm',
     md: 'max-w-md',
     lg: 'max-w-lg',
     xl: 'max-w-xl'
   };
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className={`bg-[#1e1e1e] border border-white/20 rounded-xl shadow-2xl w-full ${sizeClasses[size]} overflow-hidden animate-in zoom-in-95 duration-200 relative z-50`}>
-        <div className="px-4 py-3 border-b border-white/10 flex justify-between items-center bg-white/5">
-          <h3 className="text-sm font-medium text-white">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={16} /></button>
-        </div>
-        <div className="p-4">{children}</div>
-      </div>
-    </div>
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <motion.div
+            className={`bg-[#1e1e1e] border border-white/20 rounded-xl shadow-2xl w-full ${sizeClasses[size]} overflow-hidden relative z-50`}
+            role="dialog"
+            aria-modal="true"
+            initial={{ opacity: 0, scale: 0.95, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 10 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div className="px-4 py-3 border-b border-white/10 flex justify-between items-center bg-white/5">
+              <h3 className="text-sm font-medium text-white">{title}</h3>
+              <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={16} /></button>
+            </div>
+            <div className="p-4">{children}</div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body
   );
 };
 
@@ -939,7 +1046,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
           {/* Email */}
           <div>
             <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-1.5">
-              <Mail size={12} /> Email
+              <EnvelopeSimple size={12} weight="bold" /> Email
             </label>
             <input 
               type="email" 
@@ -1015,7 +1122,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
 };
 
 const DashboardView = ({ students, activeClass, allClasses }) => {
-  const classStudents = students.filter(s => s.classId === activeClass.id);
+  const classStudents = students.filter(s => isSameClassId(s.classId, activeClass.id));
   const assessmentTypes = activeClass?.assessmentTypes ?? DEFAULT_ASSESSMENTS;
   const presentCount = classStudents.filter(s => s.status === 'Present').length;
   const lateCount = classStudents.filter(s => s.status === 'Late').length;
@@ -1024,12 +1131,24 @@ const DashboardView = ({ students, activeClass, allClasses }) => {
   const absentCount = classStudents.filter(s => s.status === 'Absent').length;
   const attendanceRate = classStudents.length ? Math.round((presentCount / classStudents.length) * 100) : 0;
   
-  const totalAvg = classStudents.reduce((acc, s) => acc + calculateGradesAverage(s.grades, assessmentTypes), 0);
-  const classAvg = classStudents.length ? Math.round(totalAvg / classStudents.length) : 0;
+  const classAverages = classStudents
+    .map((student) => ({
+      student,
+      info: getGradesAverageInfo(student.grades, assessmentTypes, student.zeroExclusions),
+    }))
+    .filter(({ info }) => info.hasScores)
+    .map(({ info }) => info.avg);
+  const classAvg = classAverages.length
+    ? Math.round(classAverages.reduce((acc, value) => acc + value, 0) / classAverages.length)
+    : 0;
 
   // Get top performing students
   const topStudents = [...classStudents]
-    .map(s => ({ ...s, avg: calculateGradesAverage(s.grades, assessmentTypes) }))
+    .map((student) => {
+      const info = getGradesAverageInfo(student.grades, assessmentTypes, student.zeroExclusions);
+      return { ...student, avg: info.avg, hasScores: info.hasScores };
+    })
+    .filter((student) => student.hasScores)
     .sort((a, b) => b.avg - a.avg)
     .slice(0, 3);
 
@@ -1249,7 +1368,7 @@ const DashboardView = ({ students, activeClass, allClasses }) => {
 
 const AttendanceView = ({ students, activeClass, onUpdateStatus }) => {
   const [openDropdown, setOpenDropdown] = useState(null);
-  const classStudents = students.filter(s => s.classId === activeClass.id);
+  const classStudents = students.filter(s => isSameClassId(s.classId, activeClass.id));
 
   return (
     <div className="flex flex-col h-full min-h-0 animate-slide-in">
@@ -1337,6 +1456,13 @@ const AttendanceView = ({ students, activeClass, onUpdateStatus }) => {
 const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent, onEditStudent }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formSaving, setFormSaving] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteSaving, setDeleteSaving] = useState(false);
   const [formData, setFormData] = useState({
     id: '',
     name: '',
@@ -1344,14 +1470,19 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
     gender: '',
     studentNumber: '',
   });
-  const classStudents = students.filter(s => s.classId === activeClass.id);
+  const classStudents = students.filter(s => isSameClassId(s.classId, activeClass.id));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isEditMode) {
-      onEditStudent(formData.id, formData);
-    } else {
-      onAddStudent(activeClass.id, formData);
+    setFormSaving(true);
+    setFormError('');
+    const result = isEditMode
+      ? await onEditStudent(formData.id, formData)
+      : await onAddStudent(activeClass.id, formData);
+    setFormSaving(false);
+    if (result && result.ok === false) {
+      setFormError(result.message || 'Failed to save student.');
+      return;
     }
     setIsModalOpen(false);
     setFormData({ id: '', name: '', email: '', gender: '', studentNumber: '' });
@@ -1365,14 +1496,42 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
       gender: student.gender || '',
       studentNumber: student.studentNumber || '',
     });
+    setFormError('');
     setIsEditMode(true);
     setIsModalOpen(true);
   };
 
   const openAdd = () => {
     setFormData({ id: '', name: '', email: '', gender: '', studentNumber: '' });
+    setFormError('');
     setIsEditMode(false);
     setIsModalOpen(true);
+  };
+
+  const openDelete = (student) => {
+    setDeleteTarget(student);
+    setDeletePassword('');
+    setDeleteError('');
+    setIsDeleteOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    if (!deletePassword) {
+      setDeleteError('Password is required.');
+      return;
+    }
+    setDeleteSaving(true);
+    setDeleteError('');
+    const result = await onDeleteStudent(deleteTarget.id, deletePassword);
+    setDeleteSaving(false);
+    if (result && result.ok === false) {
+      setDeleteError(result.message || 'Failed to delete student.');
+      return;
+    }
+    setIsDeleteOpen(false);
+    setDeleteTarget(null);
+    setDeletePassword('');
   };
 
   return (
@@ -1385,9 +1544,9 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
       </div>
 
       <div className="macos-glass-panel rounded-xl overflow-hidden flex-1 min-h-0">
-        <div className="w-full overflow-x-auto">
+        <div className="w-full h-full overflow-auto">
           <table className="w-full table-fixed text-left">
-            <thead className="bg-white/5 border-b border-white/10">
+            <thead className="sticky top-0 bg-[#1e1e1e] border-b border-white/10 z-10">
               <tr className="text-gray-400 text-xs uppercase font-medium">
                 <th className="p-3 pl-4 sm:p-4 sm:pl-6">Student No.</th>
                 <th className="p-3 sm:p-4">Full Name</th>
@@ -1407,7 +1566,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
                     <button onClick={() => openEdit(student)} className="p-1.5 rounded-md bg-white/10 text-blue-400 hover:bg-blue-500/20 transition-colors">
                       <Edit3 size={14} />
                     </button>
-                    <button onClick={() => onDeleteStudent(student.id)} className="p-1.5 rounded-md bg-white/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                    <button onClick={() => openDelete(student)} className="p-1.5 rounded-md bg-white/10 text-red-400 hover:bg-red-500/20 transition-colors">
                       <Trash2 size={14} />
                     </button>
                   </td>
@@ -1475,11 +1634,88 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
               placeholder="Student number"
             />
           </div>
+          {formError && (
+            <p className="text-xs text-red-400">{formError}</p>
+          )}
           <div className="flex justify-end gap-2 mt-6">
             <button type="button" onClick={() => setIsModalOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
-            <button type="submit" className="px-3 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-500 font-medium shadow-lg shadow-blue-600/20 transition-colors">Save</button>
+            <button
+              type="submit"
+              disabled={formSaving}
+              className="px-3 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-500 font-medium shadow-lg shadow-blue-600/20 transition-colors disabled:opacity-70"
+            >
+              {formSaving ? 'Saving...' : 'Save'}
+            </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={isDeleteOpen}
+        onClose={() => {
+          if (deleteSaving) return;
+          setIsDeleteOpen(false);
+          setDeleteTarget(null);
+          setDeletePassword('');
+          setDeleteError('');
+        }}
+        title="Delete Student"
+      >
+        <div className="space-y-4">
+          <div className="macos-glass-panel rounded-lg border border-white/10 p-4 text-sm text-gray-200">
+            <p className="font-semibold text-white">This action will permanently delete the student data.</p>
+            <p className="text-xs text-gray-400 mt-2">
+              Student: <span className="text-gray-200">{deleteTarget?.name || '-'}</span>
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Student No: <span className="text-gray-200">{deleteTarget?.studentNumber || '-'}</span>
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Confirm password</label>
+            <input
+              type="password"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none transition-all"
+              placeholder="Enter your password"
+            />
+          </div>
+
+          {deleteError && <p className="text-xs text-red-400">{deleteError}</p>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (deleteSaving) return;
+                setIsDeleteOpen(false);
+                setDeleteTarget(null);
+                setDeletePassword('');
+                setDeleteError('');
+              }}
+              className="px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteConfirm}
+              disabled={deleteSaving}
+              className="px-3 py-2 rounded-lg text-sm bg-red-500/80 text-white hover:bg-red-500 font-medium shadow-lg shadow-red-500/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+            >
+              {deleteSaving ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
@@ -1898,13 +2134,37 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [gradeForm, setGradeForm] = useState({});
   const [attitudeForm, setAttitudeForm] = useState('ME');
+  const [zeroExclusionsForm, setZeroExclusionsForm] = useState({});
   const [newAssessment, setNewAssessment] = useState('');
   const [saving, setSaving] = useState(false);
+  const [isGradesExpanded, setIsGradesExpanded] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [assessmentToRemove, setAssessmentToRemove] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [confirmError, setConfirmError] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [zeroNoteOpen, setZeroNoteOpen] = useState(false);
+  const [zeroNoteStudent, setZeroNoteStudent] = useState(null);
+  const [zeroNoteType, setZeroNoteType] = useState('');
+  const [zeroNoteText, setZeroNoteText] = useState('');
+  const [zeroNoteError, setZeroNoteError] = useState('');
+  const [zeroNoteSaving, setZeroNoteSaving] = useState(false);
+  const [hoverNote, setHoverNote] = useState(null);
+  const hoverTimerRef = useRef(null);
 
-  const classStudents = students.filter(s => s.classId === activeClass.id);
+  const classStudents = students.filter(s => isSameClassId(s.classId, activeClass.id));
   const assessmentTypes = activeClass?.assessmentTypes ?? DEFAULT_ASSESSMENTS;
 
-  const calculateAverage = (grades) => calculateGradesAverage(grades, assessmentTypes);
+  const calculateAverage = (grades, zeroExclusions = {}) => (
+    calculateGradesAverage(grades, assessmentTypes, zeroExclusions)
+  );
+
+  useEffect(() => () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  }, []);
 
   const getGradeColor = (avg) => {
     if (avg >= 85) return 'text-green-400';
@@ -1934,7 +2194,39 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
     }, {});
     setGradeForm(nextForm);
     setAttitudeForm(student.attitude || 'ME');
+    setZeroExclusionsForm(normalizeZeroExclusions(student.zeroExclusions));
     setIsModalOpen(true);
+  };
+
+  const handleZeroCellClick = (student, type) => {
+    const score = safeNumber(student.grades?.[type]);
+    if (score !== 0) return;
+    const notes = normalizeZeroExclusionNotes(student.zeroExclusionNotes);
+    setZeroNoteStudent(student);
+    setZeroNoteType(type);
+    setZeroNoteText(notes[type] || '');
+    setZeroNoteError('');
+    setZeroNoteOpen(true);
+  };
+
+  const scheduleHoverNote = (studentId, type, text) => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+    }
+    hoverTimerRef.current = setTimeout(() => {
+      setHoverNote({ studentId, type, text });
+      hoverTimerRef.current = null;
+    }, 2000);
+  };
+
+  const cancelHoverNote = (studentId, type) => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHoverNote((prev) => (
+      prev && prev.studentId === studentId && prev.type === type ? null : prev
+    ));
   };
 
   const handleSubmit = async (e) => {
@@ -1942,7 +2234,12 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
     if (!selectedStudent) return;
 
     setSaving(true);
-    await onUpdateGrades(selectedStudent.id, { grades: gradeForm, attitude: attitudeForm });
+    await onUpdateGrades(selectedStudent.id, { 
+      grades: gradeForm, 
+      attitude: attitudeForm, 
+      zeroExclusions: zeroExclusionsForm,
+      zeroExclusionNotes: normalizeZeroExclusionNotes(selectedStudent.zeroExclusionNotes),
+    });
     setSaving(false);
     setIsModalOpen(false);
     setSelectedStudent(null);
@@ -1970,8 +2267,108 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
   const handleRemoveAssessment = (label) => {
     if (!activeClass?.id) return;
     if (assessmentTypes.length <= 1) return;
-    const next = assessmentTypes.filter(item => item !== label);
-    onUpdateAssessmentTypes?.(activeClass.id, next);
+    setAssessmentToRemove(label);
+    setConfirmPassword('');
+    setConfirmError('');
+    setIsConfirmOpen(true);
+  };
+
+  const handleSaveZeroNote = async () => {
+    if (!zeroNoteStudent || !zeroNoteType) return;
+    const current = normalizeZeroExclusions(zeroNoteStudent.zeroExclusions);
+    const currentNotes = normalizeZeroExclusionNotes(zeroNoteStudent.zeroExclusionNotes);
+
+    const trimmed = zeroNoteText.trim();
+    if (!trimmed) {
+      setZeroNoteError('Please add a reason.');
+      return;
+    }
+    current[zeroNoteType] = false;
+    currentNotes[zeroNoteType] = trimmed;
+
+    setZeroNoteSaving(true);
+    setZeroNoteError('');
+    await onUpdateGrades(zeroNoteStudent.id, {
+      grades: zeroNoteStudent.grades,
+      attitude: zeroNoteStudent.attitude,
+      zeroExclusions: current,
+      zeroExclusionNotes: currentNotes,
+    });
+    setZeroNoteSaving(false);
+    setZeroNoteOpen(false);
+    setZeroNoteStudent(null);
+    setZeroNoteType('');
+    setZeroNoteText('');
+  };
+
+  const handleUncountZero = async () => {
+    if (!zeroNoteStudent || !zeroNoteType) return;
+    const current = normalizeZeroExclusions(zeroNoteStudent.zeroExclusions);
+    const currentNotes = normalizeZeroExclusionNotes(zeroNoteStudent.zeroExclusionNotes);
+    delete current[zeroNoteType];
+    delete currentNotes[zeroNoteType];
+
+    setZeroNoteSaving(true);
+    setZeroNoteError('');
+    await onUpdateGrades(zeroNoteStudent.id, {
+      grades: zeroNoteStudent.grades,
+      attitude: zeroNoteStudent.attitude,
+      zeroExclusions: current,
+      zeroExclusionNotes: currentNotes,
+    });
+    setZeroNoteSaving(false);
+    setZeroNoteOpen(false);
+    setZeroNoteStudent(null);
+    setZeroNoteType('');
+    setZeroNoteText('');
+  };
+
+
+  const handleConfirmRemove = async () => {
+    if (!activeClass?.id || !assessmentToRemove) return;
+    if (!confirmPassword) {
+      setConfirmError('Password is required.');
+      return;
+    }
+    if (!supabase) {
+      setConfirmError('Supabase is not configured.');
+      return;
+    }
+
+    setConfirming(true);
+    setConfirmError('');
+
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const email = userData?.user?.email;
+    if (userError || !email) {
+      setConfirmError('User session not found.');
+      setConfirming(false);
+      return;
+    }
+
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password: confirmPassword,
+    });
+
+    if (authError) {
+      setConfirmError('Incorrect password.');
+      setConfirming(false);
+      return;
+    }
+
+    const next = assessmentTypes.filter(item => item !== assessmentToRemove);
+    const result = await onUpdateAssessmentTypes?.(activeClass.id, next);
+    if (result && result.ok === false) {
+      setConfirmError(result.message || 'Failed to delete assessment.');
+      setConfirming(false);
+      return;
+    }
+
+    setConfirming(false);
+    setIsConfirmOpen(false);
+    setAssessmentToRemove('');
+    setConfirmPassword('');
   };
 
   // Calculate class statistics
@@ -1979,14 +2376,194 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
     if (classStudents.length === 0) {
       return { classAverage: 0, belowStandard: 0, attitudeScore: 0, attitudeLabel: 'ME' };
     }
-    const averages = classStudents.map(student => calculateGradesAverage(student.grades, assessmentTypes));
-    const classAverage = Math.round(averages.reduce((acc, value) => acc + value, 0) / classStudents.length);
-    const belowStandard = averages.filter(avg => avg < 65).length;
+    const averageInfo = classStudents.map(student => ({
+      info: getGradesAverageInfo(student.grades, assessmentTypes, student.zeroExclusions),
+    }));
+    const averages = averageInfo
+      .filter(({ info }) => info.hasScores)
+      .map(({ info }) => info.avg);
+    const classAverage = averages.length
+      ? Math.round(averages.reduce((acc, value) => acc + value, 0) / averages.length)
+      : 0;
+    const belowStandard = averageInfo
+      .filter(({ info }) => info.hasScores)
+      .filter(({ info }) => info.avg < 65).length;
     const attitudeTotal = classStudents.reduce((acc, student) => acc + getAttitudeScore(student.attitude), 0);
     const attitudeScore = attitudeTotal / classStudents.length;
     const attitudeLabel = getAttitudeLabel(attitudeScore);
     return { classAverage, belowStandard, attitudeScore, attitudeLabel };
   }, [classStudents, assessmentTypes]);
+
+  const renderGradesTable = (isExpanded) => (
+    <div className={`macos-glass-panel rounded-xl overflow-hidden flex flex-col ${isExpanded ? 'h-full' : 'flex-1 min-h-0'}`}>
+      <div className="px-4 py-3 border-b border-white/10 bg-white/5 flex justify-between items-center shrink-0">
+        <span className="text-xs font-semibold text-gray-400 uppercase">Grades: {activeClass.name}</span>
+        <div className="flex items-center gap-2 text-xs text-gray-400">
+          <span>{classStudents.length} Students</span>
+          <button
+            type="button"
+            onClick={() => setIsGradesExpanded(!isExpanded)}
+            className="p-1.5 rounded-md bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white transition-colors"
+            title={isExpanded ? 'Minimize view' : 'Maximize view'}
+          >
+            {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        </div>
+      </div>
+      
+      <div className="overflow-auto flex-1 min-h-0">
+        <table className="min-w-max w-full table-fixed text-left border-collapse">
+          <thead className="sticky top-0 bg-[#1e1e1e] z-10 shadow-md">
+            <tr className="border-b border-white/10 text-gray-400 text-[10px] font-semibold uppercase tracking-wide">
+              <th className="p-3 pl-6 sticky left-0 z-20 bg-[#1e1e1e] w-56">Student</th>
+              {assessmentTypes.map((type) => (
+                <th key={type} className="p-3 text-center w-24">
+                  <span className="block max-w-[88px] mx-auto truncate">{type}</span>
+                </th>
+              ))}
+              <th className="p-3 text-center w-20">Average</th>
+              <th className="p-3 text-center w-20">Attitude</th>
+              <th className="p-3 text-center w-16">Grade</th>
+              <th className="p-3 text-right pr-6 w-16">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {classStudents.map((student) => {
+              const avgInfo = getGradesAverageInfo(student.grades, assessmentTypes, student.zeroExclusions);
+              const avg = avgInfo.avg;
+              const hasScores = avgInfo.hasScores;
+              const badge = hasScores
+                ? getGradeBadge(avg)
+                : { label: '--', bg: 'bg-white/5', text: 'text-gray-400', border: 'border-white/10' };
+              const attitudeBadge = getAttitudeBadge(student.attitude || 'ME');
+              const normalizedZeroExclusions = normalizeZeroExclusions(student.zeroExclusions);
+              return (
+                <tr key={student.id} className="macos-table-row transition-colors cursor-default group hover:bg-white/5">
+                  <td className="p-3 pl-6 sticky left-0 z-10 bg-[#1b1b1f]/95 backdrop-blur-sm w-56">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-600 to-gray-500 flex items-center justify-center text-xs text-white font-medium shadow-sm">
+                        {student.avatar}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-sm text-gray-200 font-medium block truncate">{student.name}</span>
+                        <span className="text-[10px] text-gray-500 truncate">{student.studentNumber || '-'}</span>
+                      </div>
+                    </div>
+                  </td>
+                  {assessmentTypes.map((type) => (
+                    <td key={type} className="p-3 text-center w-24">
+                      {(() => {
+                        const score = safeNumber(student.grades?.[type]);
+                        const isZero = score === 0;
+                        const isExcluded = isZero && normalizedZeroExclusions[type] !== false;
+                        const isCountedZero = isZero && normalizedZeroExclusions[type] === false;
+                        const note = normalizeZeroExclusionNotes(student.zeroExclusionNotes)[type];
+                        const colorClass = isExcluded
+                          ? 'text-gray-400 line-through'
+                          : isZero
+                            ? 'text-red-400'
+                            : getGradeColor(score);
+                        return (
+                          <div className="relative flex justify-center">
+                            <button
+                              type="button"
+                              onClick={() => handleZeroCellClick(student, type)}
+                              onMouseEnter={() => {
+                                if (isCountedZero && note) {
+                                  scheduleHoverNote(student.id, type, note);
+                                }
+                              }}
+                              onMouseLeave={() => {
+                                if (isCountedZero && note) {
+                                  cancelHoverNote(student.id, type);
+                                }
+                              }}
+                              className={`w-full text-sm font-semibold ${colorClass} ${isZero ? 'cursor-pointer' : 'cursor-default'}`}
+                            >
+                              {score}
+                            </button>
+                            {isCountedZero && note && hoverNote?.studentId === student.id && hoverNote.type === type && (
+                              <div className="absolute z-20 bottom-full mb-2 w-44 px-3 py-2 rounded-lg text-[11px] text-gray-100 macos-tooltip">
+                                {note}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                  ))}
+                  <td className="p-3 text-center w-20">
+                    <span className={`text-lg font-bold ${hasScores ? getGradeColor(avg) : 'text-gray-500'}`}>
+                      {hasScores ? avg : '--'}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center w-20">
+                    <span className={`px-2 py-1 rounded-md text-xs font-bold border ${attitudeBadge.bg} ${attitudeBadge.text} ${attitudeBadge.border}`}>
+                      {attitudeBadge.label}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center w-16">
+                    <span className={`px-2 py-1 rounded-md text-xs font-bold border ${badge.bg} ${badge.text} ${badge.border}`}>
+                      {badge.label}
+                    </span>
+                  </td>
+                  <td className="p-3 text-right pr-6 w-16">
+                    <button 
+                      onClick={() => openEditModal(student)}
+                      className="p-1.5 rounded-md bg-white/10 text-blue-400 hover:bg-blue-500/20 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {classStudents.length === 0 && (
+              <tr>
+                <td colSpan={assessmentTypes.length + 5} className="p-8 text-center text-gray-500 text-sm">
+                  No students in this class yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const gradesOverlay = typeof document !== 'undefined'
+    ? createPortal(
+      <AnimatePresence>
+        {isGradesExpanded && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            onClick={() => setIsGradesExpanded(false)}
+          >
+            <motion.div
+              className="w-[96vw] h-[88vh] max-w-[1400px]"
+              initial={{ opacity: 0, scale: 0.965, y: 26, filter: 'blur(6px)' }}
+              animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, scale: 0.985, y: -16, filter: 'blur(6px)' }}
+              transition={{
+                type: 'spring',
+                stiffness: 220,
+                damping: 26,
+                mass: 0.9
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {renderGradesTable(true)}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>,
+      document.body
+    )
+    : null;
 
   return (
     <div className="flex flex-col h-full animate-slide-in">
@@ -2015,17 +2592,27 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
             <p className="text-[10px] text-gray-400 uppercase font-medium">Assessment Types</p>
             <div className="flex flex-wrap gap-2 mt-2">
               {assessmentTypes.map((type) => (
-                <span key={type} className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs bg-white/10 text-gray-200 border border-white/10">
-                  {type}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveAssessment(type)}
-                    disabled={assessmentTypes.length <= 1}
-                    className="text-gray-400 hover:text-white disabled:opacity-40"
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => {
+                    if (assessmentTypes.length <= 1) return;
+                    handleRemoveAssessment(type);
+                  }}
+                  aria-disabled={assessmentTypes.length <= 1}
+                  className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs border transition-colors select-none ${
+                    assessmentTypes.length <= 1
+                      ? 'bg-white/5 text-gray-500 border-white/10 cursor-not-allowed'
+                      : 'bg-white/10 text-gray-200 border-white/10 hover:bg-white/15 cursor-pointer'
+                  }`}
+                  aria-label={`Remove ${type}`}
+                  title="Remove assessment"
+                >
+                  <span className="truncate max-w-[160px]">{type}</span>
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-white/15 bg-white/10 text-gray-300">
+                    <X size={10} />
+                  </span>
+                </button>
               ))}
               {assessmentTypes.length === 0 && (
                 <span className="text-xs text-gray-500">No assessments yet.</span>
@@ -2046,91 +2633,9 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
         </div>
       </div>
 
-      {/* Grades Table */}
-      <div className="macos-glass-panel rounded-xl overflow-hidden flex flex-col flex-1 min-h-0">
-        <div className="px-4 py-3 border-b border-white/10 bg-white/5 flex justify-between items-center shrink-0">
-          <span className="text-xs font-semibold text-gray-400 uppercase">Grades: {activeClass.name}</span>
-          <span className="text-xs text-gray-400">{classStudents.length} Students</span>
-        </div>
-        
-        <div className="overflow-auto flex-1 min-h-0">
-          <table className="min-w-max w-full table-fixed text-left border-collapse">
-            <thead className="sticky top-0 bg-[#1e1e1e] z-10 shadow-md">
-              <tr className="border-b border-white/10 text-gray-400 text-[10px] font-semibold uppercase tracking-wide">
-                <th className="p-3 pl-6 sticky left-0 z-20 bg-[#1e1e1e] w-56">Student</th>
-                {assessmentTypes.map((type) => (
-                  <th key={type} className="p-3 text-center w-24">
-                    <span className="block max-w-[88px] mx-auto truncate">{type}</span>
-                  </th>
-                ))}
-                <th className="p-3 text-center w-20">Average</th>
-                <th className="p-3 text-center w-20">Attitude</th>
-                <th className="p-3 text-center w-16">Grade</th>
-                <th className="p-3 text-right pr-6 w-16">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {classStudents.map((student) => {
-                const avg = calculateAverage(student.grades);
-                const badge = getGradeBadge(avg);
-                const attitudeBadge = getAttitudeBadge(student.attitude || 'ME');
-                return (
-                  <tr key={student.id} className="macos-table-row transition-colors cursor-default group hover:bg-white/5">
-                    <td className="p-3 pl-6 sticky left-0 z-10 bg-[#1b1b1f]/95 backdrop-blur-sm w-56">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-600 to-gray-500 flex items-center justify-center text-xs text-white font-medium shadow-sm">
-                          {student.avatar}
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-sm text-gray-200 font-medium block truncate">{student.name}</span>
-                          <span className="text-[10px] text-gray-500 truncate">{student.studentNumber || '-'}</span>
-                        </div>
-                      </div>
-                    </td>
-                    {assessmentTypes.map((type) => (
-                      <td key={type} className="p-3 text-center w-24">
-                        <span className={`text-sm font-medium ${getGradeColor(safeNumber(student.grades?.[type]))}`}>
-                          {safeNumber(student.grades?.[type])}
-                        </span>
-                      </td>
-                    ))}
-                    <td className="p-3 text-center w-20">
-                      <span className={`text-lg font-bold ${getGradeColor(avg)}`}>
-                        {avg}
-                      </span>
-                    </td>
-                    <td className="p-3 text-center w-20">
-                      <span className={`px-2 py-1 rounded-md text-xs font-bold border ${attitudeBadge.bg} ${attitudeBadge.text} ${attitudeBadge.border}`}>
-                        {attitudeBadge.label}
-                      </span>
-                    </td>
-                    <td className="p-3 text-center w-16">
-                      <span className={`px-2 py-1 rounded-md text-xs font-bold border ${badge.bg} ${badge.text} ${badge.border}`}>
-                        {badge.label}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right pr-6 w-16">
-                      <button 
-                        onClick={() => openEditModal(student)}
-                        className="p-1.5 rounded-md bg-white/10 text-blue-400 hover:bg-blue-500/20 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
-                      >
-                        <Edit3 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {classStudents.length === 0 && (
-                <tr>
-                  <td colSpan={assessmentTypes.length + 5} className="p-8 text-center text-gray-500 text-sm">
-                    No students in this class yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {!isGradesExpanded && renderGradesTable(false)}
+
+      {gradesOverlay}
 
       {/* Edit Grades Modal */}
       <Modal 
@@ -2142,11 +2647,11 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
           {/* Preview Average */}
           <div className="bg-white/5 rounded-lg p-4 text-center border border-white/10">
             <p className="text-xs text-gray-400 mb-1">Predicted Average</p>
-            <p className={`text-3xl font-bold ${getGradeColor(calculateAverage(gradeForm))}`}>
-              {calculateAverage(gradeForm)}
+            <p className={`text-3xl font-bold ${getGradeColor(calculateAverage(gradeForm, zeroExclusionsForm))}`}>
+              {calculateAverage(gradeForm, zeroExclusionsForm)}
             </p>
-            <span className={`inline-block mt-2 px-3 py-1 rounded-md text-sm font-bold border ${getGradeBadge(calculateAverage(gradeForm)).bg} ${getGradeBadge(calculateAverage(gradeForm)).text} ${getGradeBadge(calculateAverage(gradeForm)).border}`}>
-              Grade {getGradeBadge(calculateAverage(gradeForm)).label}
+            <span className={`inline-block mt-2 px-3 py-1 rounded-md text-sm font-bold border ${getGradeBadge(calculateAverage(gradeForm, zeroExclusionsForm)).bg} ${getGradeBadge(calculateAverage(gradeForm, zeroExclusionsForm)).text} ${getGradeBadge(calculateAverage(gradeForm, zeroExclusionsForm)).border}`}>
+              Grade {getGradeBadge(calculateAverage(gradeForm, zeroExclusionsForm)).label}
             </span>
           </div>
 
@@ -2178,18 +2683,22 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {assessmentTypes.map((type) => (
               <div key={type}>
-                <label className="block text-xs text-gray-400 mb-1.5 text-center">{type}</label>
+                <label className="block text-[10px] text-gray-400 mb-1 text-center">{type}</label>
                 <input 
-                  type="number" 
-                  min="0"
-                  max="100"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={gradeForm[type] ?? 0}
                   onChange={(e) => handleGradeChange(type, e.target.value)}
-                  className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-lg font-bold text-center focus:border-blue-500 outline-none transition-all"
+                  className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-base font-semibold text-center focus:border-blue-500 outline-none transition-all"
                 />
               </div>
             ))}
           </div>
+
+          <p className="text-[10px] text-gray-500 text-center">
+            Tip: zeros are excluded by default. Click a 0 score to add a reason and count it.
+          </p>
 
           {/* Grade Scale Reference */}
           <div className="bg-white/5 rounded-lg p-3 border border-white/10">
@@ -2230,12 +2739,164 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
           </div>
         </form>
       </Modal>
+
+      {/* Zero Exclusion Note Modal */}
+      <Modal
+        isOpen={zeroNoteOpen}
+        onClose={() => {
+          if (zeroNoteSaving) return;
+          setZeroNoteOpen(false);
+          setZeroNoteStudent(null);
+          setZeroNoteType('');
+          setZeroNoteText('');
+          setZeroNoteError('');
+        }}
+        title="Count Zero Score"
+      >
+        <div className="space-y-4">
+          <div className="macos-glass-panel rounded-lg border border-white/10 p-4 text-sm text-gray-200">
+            <p className="font-semibold text-white">Add a reason to count this zero in the average.</p>
+            <p className="text-xs text-gray-400 mt-2">
+              Student: <span className="text-gray-200">{zeroNoteStudent?.name || '-'}</span>
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Assessment: <span className="text-gray-200">{zeroNoteType || '-'}</span>
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Reason</label>
+            <textarea
+              rows={3}
+              value={zeroNoteText}
+              onChange={(e) => setZeroNoteText(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none transition-all resize-none"
+              placeholder="Explain why this zero should be counted"
+            />
+          </div>
+
+          {zeroNoteError && <p className="text-xs text-red-400">{zeroNoteError}</p>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (zeroNoteSaving) return;
+                setZeroNoteOpen(false);
+                setZeroNoteStudent(null);
+                setZeroNoteType('');
+                setZeroNoteText('');
+                setZeroNoteError('');
+              }}
+              className="px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={zeroNoteSaving}
+              onClick={handleSaveZeroNote}
+              className="px-3 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-500 font-medium shadow-lg shadow-blue-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+            >
+              {zeroNoteSaving ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Count Zero'
+              )}
+            </button>
+            {zeroNoteStudent && zeroNoteType && normalizeZeroExclusions(zeroNoteStudent.zeroExclusions)[zeroNoteType] === false && (
+              <button
+                type="button"
+                disabled={zeroNoteSaving}
+                onClick={handleUncountZero}
+                className="px-3 py-2 rounded-lg text-sm text-gray-300 border border-white/15 hover:bg-white/10 transition-colors disabled:opacity-70"
+              >
+                Mark as not counted
+              </button>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Remove Assessment Modal */}
+      <Modal
+        isOpen={isConfirmOpen}
+        onClose={() => {
+          if (confirming) return;
+          setIsConfirmOpen(false);
+          setAssessmentToRemove('');
+          setConfirmPassword('');
+          setConfirmError('');
+        }}
+        title="Delete Assessment"
+      >
+        <div className="space-y-4">
+          <div className="macos-glass-panel rounded-lg border border-white/10 p-4 text-sm text-gray-200">
+            <p className="font-semibold text-white">This action will permanently delete the assessment data.</p>
+            <p className="text-xs text-gray-400 mt-2">
+              Assessment: <span className="text-gray-200">{assessmentToRemove || '-'}</span>
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Confirm password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none transition-all"
+              placeholder="Enter your password"
+            />
+          </div>
+
+          {confirmError && <p className="text-xs text-red-400">{confirmError}</p>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (confirming) return;
+                setIsConfirmOpen(false);
+                setAssessmentToRemove('');
+                setConfirmPassword('');
+                setConfirmError('');
+              }}
+              className="px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmRemove}
+              disabled={confirming}
+              className="px-3 py-2 rounded-lg text-sm bg-red-500/80 text-white hover:bg-red-500 font-medium shadow-lg shadow-red-500/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+            >
+              {confirming ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
 
 const ClassManager = ({ classes, activeClassId, setActiveClassId, onAddClass, onDeleteClass, onSelectClass }) => {
   const [isAdding, setIsAdding] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteSaving, setDeleteSaving] = useState(false);
   const [newClass, setNewClass] = useState({ name: '', subtitle: '', type: 'subject' });
 
   const handleAdd = (e) => {
@@ -2247,6 +2908,33 @@ const ClassManager = ({ classes, activeClassId, setActiveClassId, onAddClass, on
 
   const homeroomClasses = classes.filter(c => c.type === 'homeroom');
   const subjectClasses = classes.filter(c => c.type === 'subject');
+
+  const openDelete = (cls) => {
+    if (classes.length <= 1) return;
+    setDeleteTarget(cls);
+    setDeletePassword('');
+    setDeleteError('');
+    setIsDeleteOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    if (!deletePassword) {
+      setDeleteError('Password is required.');
+      return;
+    }
+    setDeleteSaving(true);
+    setDeleteError('');
+    const result = await onDeleteClass?.(deleteTarget.id, deletePassword);
+    setDeleteSaving(false);
+    if (result && result.ok === false) {
+      setDeleteError(result.message || 'Failed to delete class.');
+      return;
+    }
+    setIsDeleteOpen(false);
+    setDeleteTarget(null);
+    setDeletePassword('');
+  };
 
   const ClassList = ({ items, title, icon: Icon }) => (
     <div className="mb-4">
@@ -2270,7 +2958,7 @@ const ClassManager = ({ classes, activeClassId, setActiveClassId, onAddClass, on
             </button>
             {classes.length > 1 && (
               <button 
-                onClick={(e) => { e.stopPropagation(); onDeleteClass(cls.id); }}
+                onClick={(e) => { e.stopPropagation(); openDelete(cls); }}
                 className="absolute right-2 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity"
               >
                 <Trash2 size={12} />
@@ -2334,6 +3022,74 @@ const ClassManager = ({ classes, activeClassId, setActiveClassId, onAddClass, on
 
       <ClassList items={homeroomClasses} title="Homeroom" icon={Home} />
       <ClassList items={subjectClasses} title="Subject Classes" icon={Briefcase} />
+
+      <Modal
+        isOpen={isDeleteOpen}
+        onClose={() => {
+          if (deleteSaving) return;
+          setIsDeleteOpen(false);
+          setDeleteTarget(null);
+          setDeletePassword('');
+          setDeleteError('');
+        }}
+        title="Delete Class"
+      >
+        <div className="space-y-4">
+          <div className="macos-glass-panel rounded-lg border border-white/10 p-4 text-sm text-gray-200">
+            <p className="font-semibold text-white">This action will permanently delete the class data.</p>
+            <p className="text-xs text-gray-400 mt-2">
+              Class: <span className="text-gray-200">{deleteTarget?.name || '-'}</span>
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Detail: <span className="text-gray-200">{deleteTarget?.subtitle || '-'}</span>
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Confirm password</label>
+            <input
+              type="password"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none transition-all"
+              placeholder="Enter your password"
+            />
+          </div>
+
+          {deleteError && <p className="text-xs text-red-400">{deleteError}</p>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (deleteSaving) return;
+                setIsDeleteOpen(false);
+                setDeleteTarget(null);
+                setDeletePassword('');
+                setDeleteError('');
+              }}
+              className="px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteConfirm}
+              disabled={deleteSaving}
+              className="px-3 py-2 rounded-lg text-sm bg-red-500/80 text-white hover:bg-red-500 font-medium shadow-lg shadow-red-500/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+            >
+              {deleteSaving ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
@@ -2550,10 +3306,14 @@ const MainDashboard = ({ onLogout }) => {
   const updateAssessmentTypes = async (classId, nextTypes) => {
     if (!supabase) {
       setDataError('Supabase is not configured.');
-      return;
+      return { ok: false, message: 'Supabase is not configured.' };
     }
 
     const sanitized = normalizeAssessmentTypes(nextTypes);
+    const currentTypes = classes.find(cls => cls.id === classId)?.assessmentTypes ?? DEFAULT_ASSESSMENTS;
+    const removed = currentTypes.filter(item => !sanitized.includes(item));
+    const added = sanitized.filter(item => !currentTypes.includes(item));
+
     const { error } = await supabase
       .from('classes')
       .update({ assessment_types: sanitized })
@@ -2561,27 +3321,78 @@ const MainDashboard = ({ onLogout }) => {
 
     if (error) {
       setDataError('Failed to update assessment types.');
-      return;
+      return { ok: false, message: error.message || 'Failed to update assessment types.' };
     }
 
-    setClasses(prev => prev.map(cls => cls.id === classId ? { ...cls, assessmentTypes: sanitized } : cls));
-    setStudents(prev => prev.map(student => {
-      if (student.classId !== classId) return student;
-      const nextGrades = { ...(student.grades || {}) };
-      sanitized.forEach((type) => {
-        if (nextGrades[type] === undefined) {
-          nextGrades[type] = 0;
-        }
+    const updatedStudents = students
+      .filter(student => student.classId === classId)
+      .map((student) => {
+        const nextGrades = { ...(student.grades || {}) };
+        const nextZeroExclusions = { ...(student.zeroExclusions || {}) };
+        const nextZeroExclusionNotes = { ...(student.zeroExclusionNotes || {}) };
+        removed.forEach((type) => {
+          delete nextGrades[type];
+          delete nextZeroExclusions[type];
+          delete nextZeroExclusionNotes[type];
+        });
+        added.forEach((type) => {
+          if (nextGrades[type] === undefined) {
+            nextGrades[type] = 0;
+          }
+        });
+        return { ...student, grades: nextGrades, zeroExclusions: nextZeroExclusions, zeroExclusionNotes: nextZeroExclusionNotes };
       });
-      return { ...student, grades: nextGrades };
-    }));
+
+    if (removed.length || added.length) {
+      const updates = await Promise.all(
+        updatedStudents.map((student) => (
+          supabase
+            .from('students')
+            .update({ grades: student.grades, zero_exclusions: student.zeroExclusions, zero_exclusion_notes: student.zeroExclusionNotes })
+            .eq('id', student.id)
+        ))
+      );
+      const failedUpdate = updates.find(result => result.error);
+      if (failedUpdate?.error) {
+        setDataError('Failed to update assessment data.');
+        return { ok: false, message: failedUpdate.error.message || 'Failed to update assessment data.' };
+      }
+    }
+
+    const updatedMap = new Map(updatedStudents.map(student => [student.id, student]));
+    setClasses(prev => prev.map(cls => cls.id === classId ? { ...cls, assessmentTypes: sanitized } : cls));
+    setStudents(prev => prev.map(student => updatedMap.get(student.id) || student));
+    return { ok: true };
   };
 
-  const deleteClass = async (id) => {
-    if (classes.length <= 1) return;
+
+  const deleteClass = async (id, password) => {
+    if (classes.length <= 1) {
+      return { ok: false, message: 'At least one class must remain.' };
+    }
     if (!supabase) {
       setDataError('Supabase is not configured.');
-      return;
+      return { ok: false, message: 'Supabase is not configured.' };
+    }
+    if (!password) {
+      return { ok: false, message: 'Password is required.' };
+    }
+
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const email = userData?.user?.email;
+    if (userError || !email) {
+      const message = 'User session not found.';
+      setDataError(message);
+      return { ok: false, message };
+    }
+
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError) {
+      return { ok: false, message: 'Incorrect password.' };
     }
 
     const { error } = await supabase
@@ -2590,20 +3401,22 @@ const MainDashboard = ({ onLogout }) => {
       .eq('id', id);
 
     if (error) {
-      setDataError('Failed to delete class.');
-      return;
+      const message = error.message || 'Failed to delete class.';
+      setDataError(message);
+      return { ok: false, message };
     }
 
     const nextClasses = classes.filter(c => c.id !== id);
     setClasses(nextClasses);
-    setStudents(prev => prev.filter(s => s.classId !== id));
-    setActiveClassId(prev => (prev === id ? (nextClasses[0]?.id ?? null) : prev));
+    setStudents(prev => prev.filter(s => !isSameClassId(s.classId, id)));
+    setActiveClassId(prev => (isSameClassId(prev, id) ? (nextClasses[0]?.id ?? null) : prev));
+    return { ok: true };
   };
 
   const addStudent = async (classId, formData) => {
     if (!supabase) {
       setDataError('Supabase is not configured.');
-      return;
+      return { ok: false, message: 'Supabase is not configured.' };
     }
     if (!classId) return;
 
@@ -2611,7 +3424,9 @@ const MainDashboard = ({ onLogout }) => {
     const trimmedEmail = formData.email.trim().toLowerCase();
     const trimmedGender = formData.gender.trim();
     const trimmedStudentNumber = formData.studentNumber.trim();
-    if (!trimmedName || !trimmedEmail || !trimmedGender || !trimmedStudentNumber) return;
+    if (!trimmedName || !trimmedEmail || !trimmedGender || !trimmedStudentNumber) {
+      return { ok: false, message: 'Please complete all fields.' };
+    }
 
     const avatar = buildAvatar(trimmedName);
     const classInfo = classes.find(cls => cls.id === classId);
@@ -2620,9 +3435,6 @@ const MainDashboard = ({ onLogout }) => {
       acc[type] = 0;
       return acc;
     }, {});
-    const legacyQuiz = safeNumber(grades.Quiz);
-    const legacyMid = safeNumber(grades.Midterm);
-    const legacyProject = safeNumber(grades.Project);
     const attendanceTime = getNowIso();
     const { data, error } = await supabase
       .from('students')
@@ -2637,32 +3449,35 @@ const MainDashboard = ({ onLogout }) => {
         attendance_time: attendanceTime,
         grades,
         attitude: 'ME',
-        quiz1: legacyQuiz,
-        mid: legacyMid,
-        project: legacyProject,
+        zero_exclusions: {},
+        zero_exclusion_notes: {},
       })
       .select()
       .single();
 
     if (error) {
-      setDataError('Failed to add student.');
-      return;
+      const message = error.message || 'Failed to add student.';
+      setDataError(message);
+      return { ok: false, message };
     }
 
     setStudents(prev => [...prev, mapStudentRow(data)]);
+    return { ok: true };
   };
 
   const editStudent = async (id, formData) => {
     if (!supabase) {
       setDataError('Supabase is not configured.');
-      return;
+      return { ok: false, message: 'Supabase is not configured.' };
     }
 
     const trimmedName = formData.name.trim();
     const trimmedEmail = formData.email.trim().toLowerCase();
     const trimmedGender = formData.gender.trim();
     const trimmedStudentNumber = formData.studentNumber.trim();
-    if (!trimmedName || !trimmedEmail || !trimmedGender || !trimmedStudentNumber) return;
+    if (!trimmedName || !trimmedEmail || !trimmedGender || !trimmedStudentNumber) {
+      return { ok: false, message: 'Please complete all fields.' };
+    }
 
     const avatar = buildAvatar(trimmedName);
     const { error } = await supabase
@@ -2677,8 +3492,9 @@ const MainDashboard = ({ onLogout }) => {
       .eq('id', id);
 
     if (error) {
-      setDataError('Failed to update student.');
-      return;
+      const message = error.message || 'Failed to update student.';
+      setDataError(message);
+      return { ok: false, message };
     }
 
     setStudents(prev => prev.map(s => s.id === id ? { 
@@ -2689,13 +3505,33 @@ const MainDashboard = ({ onLogout }) => {
       gender: trimmedGender,
       studentNumber: trimmedStudentNumber,
     } : s));
+    return { ok: true };
   };
 
-  const deleteStudent = async (id) => {
-    if (!confirm('Delete this student?')) return;
+  const deleteStudent = async (id, password) => {
     if (!supabase) {
       setDataError('Supabase is not configured.');
-      return;
+      return { ok: false, message: 'Supabase is not configured.' };
+    }
+    if (!password) {
+      return { ok: false, message: 'Password is required.' };
+    }
+
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const email = userData?.user?.email;
+    if (userError || !email) {
+      const message = 'User session not found.';
+      setDataError(message);
+      return { ok: false, message };
+    }
+
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError) {
+      return { ok: false, message: 'Incorrect password.' };
     }
 
     const { error } = await supabase
@@ -2704,11 +3540,13 @@ const MainDashboard = ({ onLogout }) => {
       .eq('id', id);
 
     if (error) {
-      setDataError('Failed to delete student.');
-      return;
+      const message = error.message || 'Failed to delete student.';
+      setDataError(message);
+      return { ok: false, message };
     }
 
     setStudents(prev => prev.filter(s => s.id !== id));
+    return { ok: true };
   };
 
   const updateGrades = async (id, payload) => {
@@ -2719,18 +3557,15 @@ const MainDashboard = ({ onLogout }) => {
 
     const grades = payload?.grades || {};
     const attitude = payload?.attitude || 'ME';
-    const legacyQuiz = safeNumber(grades.Quiz);
-    const legacyMid = safeNumber(grades.Midterm);
-    const legacyProject = safeNumber(grades.Project);
-
+    const zeroExclusions = normalizeZeroExclusions(payload?.zeroExclusions);
+    const zeroExclusionNotes = normalizeZeroExclusionNotes(payload?.zeroExclusionNotes);
     const { error } = await supabase
       .from('students')
       .update({
         grades,
         attitude,
-        quiz1: legacyQuiz,
-        mid: legacyMid,
-        project: legacyProject,
+        zero_exclusions: zeroExclusions,
+        zero_exclusion_notes: zeroExclusionNotes,
       })
       .eq('id', id);
 
@@ -2743,6 +3578,8 @@ const MainDashboard = ({ onLogout }) => {
       ...s, 
       grades,
       attitude,
+      zeroExclusions,
+      zeroExclusionNotes,
     } : s));
   };
 
@@ -2926,35 +3763,42 @@ const MainDashboard = ({ onLogout }) => {
           </div>
 
           <div className="mt-auto p-4 border-t border-white/10">
-            <div className="flex items-center gap-3 px-2 py-2 rounded-lg bg-white/5 border border-white/5 group hover:bg-white/10 transition-colors">
-              {teacherProfile.avatarUrl ? (
-                <img
-                  src={teacherProfile.avatarUrl}
-                  alt={teacherProfile.name}
-                  className="w-8 h-8 rounded-full object-cover shadow-inner"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-b from-blue-500 to-blue-700 shadow-inner flex items-center justify-center text-xs font-bold text-white">
-                  {teacherProfile.avatar}
+            {isLoadingData ? (
+              <div className="flex items-center gap-3 px-2 py-2 rounded-lg bg-white/5 border border-white/5 text-gray-300 text-xs">
+                <span className="macos-spinner macos-spinner-sm" />
+                <span>Loading profile...</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 px-2 py-2 rounded-lg bg-white/5 border border-white/5 group hover:bg-white/10 transition-colors">
+                {teacherProfile.avatarUrl ? (
+                  <img
+                    src={teacherProfile.avatarUrl}
+                    alt={teacherProfile.name}
+                    className="w-8 h-8 rounded-full object-cover shadow-inner"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-b from-blue-500 to-blue-700 shadow-inner flex items-center justify-center text-xs font-bold text-white">
+                    {teacherProfile.avatar}
+                  </div>
+                )}
+                <div className="flex-1 overflow-hidden">
+                  <p className="text-sm font-medium text-white truncate">{teacherProfile.name}</p>
+                  <p className="text-[10px] text-gray-400 truncate">ID: {teacherProfile.nip}</p>
                 </div>
-              )}
-              <div className="flex-1 overflow-hidden">
-                <p className="text-sm font-medium text-white truncate">{teacherProfile.name}</p>
-                <p className="text-[10px] text-gray-400 truncate">ID: {teacherProfile.nip}</p>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={() => setIsEditProfileOpen(true)} 
+                    className="text-gray-400 hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100 p-1" 
+                    title="Edit Profil"
+                  >
+                    <Edit3 size={12} />
+                  </button>
+                  <button onClick={onLogout} className="text-gray-400 hover:text-red-400 transition-colors p-1" title="Keluar">
+                    <LogIn size={14} className="transform rotate-180" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <button 
-                  onClick={() => setIsEditProfileOpen(true)} 
-                  className="text-gray-400 hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100 p-1" 
-                  title="Edit Profil"
-                >
-                  <Edit3 size={12} />
-                </button>
-                <button onClick={onLogout} className="text-gray-400 hover:text-red-400 transition-colors p-1" title="Keluar">
-                  <LogIn size={14} className="transform rotate-180" />
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         </aside>
 
@@ -3000,11 +3844,13 @@ const MainDashboard = ({ onLogout }) => {
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
+          <div className="flex-1 overflow-y-auto p-6 scroll-smooth relative">
             {isLoadingData && (
-              <div className="macos-glass-panel rounded-xl p-6 flex items-center gap-3 text-gray-300 text-sm">
-                <Loader2 size={18} className="animate-spin" />
-                Loading data...
+              <div className="absolute inset-6 flex items-center justify-center z-10">
+                <div className="macos-loading-panel rounded-2xl px-6 py-4 flex items-center gap-3 text-gray-100 text-sm">
+                  <span className="macos-spinner" />
+                  Loading data...
+                </div>
               </div>
             )}
 
@@ -3151,11 +3997,31 @@ const App = () => {
         }
         transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
       >
-        {isAuthenticated ? (
-          <MainDashboard onLogout={handleLogout} />
-        ) : (
-          <LoginScreen onLogin={handleLogin} />
-        )}
+        <AnimatePresence mode="wait">
+          {isAuthenticated ? (
+            <motion.div
+              key="dashboard"
+              className="w-full h-full flex items-center justify-center"
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -40, opacity: 0 }}
+              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <MainDashboard onLogout={handleLogout} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="login"
+              className="w-full h-full flex items-center justify-center"
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -40, opacity: 0 }}
+              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <LoginScreen onLogin={handleLogin} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );
