@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from
 import { DatePicker, TimeInput } from '@nextui-org/react';
 import { Time, parseDate } from '@internationalized/date';
 import attendifyLogo from './assets/attendify-logo.png';
+import { BookOpen as PhBookOpen, CalendarBlank, SquaresFour, Student, UserCheck } from '@phosphor-icons/react';
 import { 
   LayoutGrid, 
   Users, 
@@ -13,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus, 
+  Menu,
   Trash2,
   Edit3,
   Calendar,
@@ -57,6 +59,14 @@ const styleTag = `
     border-right: 1px solid rgba(255, 255, 255, 0.1);
   }
 
+  @media (max-width: 768px) {
+    .macos-sidebar.mobile-panel {
+      background: rgba(32, 32, 40, 0.6);
+      backdrop-filter: blur(22px) saturate(160%);
+      -webkit-backdrop-filter: blur(22px) saturate(160%);
+    }
+  }
+
   .macos-content {
     background: rgba(30, 30, 30, 0.6);
   }
@@ -84,6 +94,29 @@ const styleTag = `
     background: rgba(0, 0, 0, 0.7);
     border-color: rgba(0, 122, 255, 0.6);
     box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.25);
+  }
+
+  .macos-select {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    backdrop-filter: blur(4px);
+    transition: all 0.2s ease;
+  }
+
+  .macos-select:focus {
+    background: rgba(0, 0, 0, 0.7);
+    border-color: rgba(0, 122, 255, 0.6);
+    box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.25);
+  }
+
+  .macos-select:invalid {
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .macos-select option {
+    background-color: #141414;
+    color: #f1f5f9;
   }
 
   /* Navigation & Interactive Elements */
@@ -168,21 +201,24 @@ const SCHOOL_EMAIL_REGEX = /@(?:.+\.sch\.id|uphcollege\.com)$/i;
 const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || '').trim().toLowerCase();
 const AUTH_ERROR_MESSAGE = 'Email atau password yang dimasukkan salah.';
 const INTRO_DURATION_MS = 4000;
+const DEFAULT_ASSESSMENTS = ['Quiz', 'Midterm', 'Project'];
+const ATTITUDE_OPTIONS = ['EE', 'ME', 'DME'];
+const ATTITUDE_SCORES = { EE: 3, ME: 2, DME: 1 };
 
 // --- DATA MODEL ---
 const INITIAL_CLASSES = [
-  { id: 1, type: 'homeroom', name: 'Grade 10 Science 1', subtitle: 'Homeroom' },
-  { id: 2, type: 'subject', name: 'Grade 11 Social 2', subtitle: 'Basic Physics' },
-  { id: 3, type: 'subject', name: 'Grade 12 Science 3', subtitle: 'Advanced Physics' },
+  { id: 1, type: 'homeroom', name: 'Grade 10 Science 1', subtitle: 'Homeroom', assessmentTypes: DEFAULT_ASSESSMENTS },
+  { id: 2, type: 'subject', name: 'Grade 11 Social 2', subtitle: 'Basic Physics', assessmentTypes: DEFAULT_ASSESSMENTS },
+  { id: 3, type: 'subject', name: 'Grade 12 Science 3', subtitle: 'Advanced Physics', assessmentTypes: DEFAULT_ASSESSMENTS },
 ];
 
 const INITIAL_STUDENTS = [
-  { id: 1, classId: 1, name: "Alex Chen", avatar: "AC", status: 'Present', grades: { quiz1: 85, mid: 92, project: 88 } },
-  { id: 2, classId: 1, name: "Sarah Johnson", avatar: "SJ", status: 'Present', grades: { quiz1: 92, mid: 88, project: 95 } },
-  { id: 3, classId: 1, name: "Michael Davis", avatar: "MD", status: 'Late', grades: { quiz1: 78, mid: 75, project: 82 } },
-  { id: 4, classId: 2, name: "Emily Wilson", avatar: "EW", status: 'Absent', grades: { quiz1: 95, mid: 96, project: 98 } },
-  { id: 5, classId: 2, name: "Jessica Taylor", avatar: "JT", status: 'Excused', grades: { quiz1: 88, mid: 90, project: 85 } },
-  { id: 6, classId: 3, name: "David Brown", avatar: "DB", status: 'Present', grades: { quiz1: 72, mid: 68, project: 75 } },
+  { id: 1, classId: 1, name: "Alex Chen", avatar: "AC", status: 'Present', attitude: 'ME', grades: { Quiz: 85, Midterm: 92, Project: 88 } },
+  { id: 2, classId: 1, name: "Sarah Johnson", avatar: "SJ", status: 'Present', attitude: 'EE', grades: { Quiz: 92, Midterm: 88, Project: 95 } },
+  { id: 3, classId: 1, name: "Michael Davis", avatar: "MD", status: 'Late', attitude: 'ME', grades: { Quiz: 78, Midterm: 75, Project: 82 } },
+  { id: 4, classId: 2, name: "Emily Wilson", avatar: "EW", status: 'Absent', attitude: 'DME', grades: { Quiz: 95, Midterm: 96, Project: 98 } },
+  { id: 5, classId: 2, name: "Jessica Taylor", avatar: "JT", status: 'Excused', attitude: 'ME', grades: { Quiz: 88, Midterm: 90, Project: 85 } },
+  { id: 6, classId: 3, name: "David Brown", avatar: "DB", status: 'Present', attitude: 'ME', grades: { Quiz: 72, Midterm: 68, Project: 75 } },
 ];
 
 const STATUS_OPTIONS = [
@@ -250,6 +286,33 @@ const safeNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const normalizeAssessmentTypes = (value) => {
+  if (!Array.isArray(value)) return [...DEFAULT_ASSESSMENTS];
+  const trimmed = value
+    .map(item => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+  return trimmed.length ? Array.from(new Set(trimmed)) : [...DEFAULT_ASSESSMENTS];
+};
+
+const calculateGradesAverage = (grades, assessmentTypes) => {
+  const types = Array.isArray(assessmentTypes) && assessmentTypes.length
+    ? assessmentTypes
+    : DEFAULT_ASSESSMENTS;
+  if (!grades || typeof grades !== 'object') return 0;
+  const values = types.map(type => safeNumber(grades[type]));
+  if (!values.length) return 0;
+  const total = values.reduce((acc, value) => acc + value, 0);
+  return Math.round(total / values.length);
+};
+
+const getAttitudeScore = (value) => ATTITUDE_SCORES[value] ?? 0;
+
+const getAttitudeLabel = (score) => {
+  if (score >= 2.5) return 'EE';
+  if (score >= 1.5) return 'ME';
+  return 'DME';
+};
+
 const normalizeStatus = (status) => {
   const map = {
     Hadir: 'Present',
@@ -307,24 +370,34 @@ const mapClassRow = (row) => ({
   type: row.type,
   name: row.name,
   subtitle: row.subtitle,
+  assessmentTypes: normalizeAssessmentTypes(row.assessment_types),
 });
 
-const mapStudentRow = (row) => ({
-  id: row.id,
-  classId: row.class_id,
-  name: row.name,
-  avatar: row.avatar || buildAvatar(row.name),
-  email: row.email || '',
-  gender: row.gender || '',
-  studentNumber: row.student_number || '',
-  status: normalizeStatus(row.status),
-  attendanceTime: row.attendance_time || null,
-  grades: {
-    quiz1: safeNumber(row.quiz1),
-    mid: safeNumber(row.mid),
-    project: safeNumber(row.project),
-  },
-});
+const mapStudentRow = (row) => {
+  const fallbackGrades = {
+    Quiz: safeNumber(row.quiz1),
+    Midterm: safeNumber(row.mid),
+    Project: safeNumber(row.project),
+  };
+  const rawGrades = row.grades && typeof row.grades === 'object' ? row.grades : fallbackGrades;
+  const normalizedGrades = Object.fromEntries(
+    Object.entries(rawGrades).map(([key, value]) => [String(key), safeNumber(value)])
+  );
+
+  return {
+    id: row.id,
+    classId: row.class_id,
+    name: row.name,
+    avatar: row.avatar || buildAvatar(row.name),
+    email: row.email || '',
+    gender: row.gender || '',
+    studentNumber: row.student_number || '',
+    status: normalizeStatus(row.status),
+    attendanceTime: row.attendance_time || null,
+    attitude: row.attitude || 'ME',
+    grades: normalizedGrades,
+  };
+};
 
 const normalizeTimeValue = (value) => {
   if (!value || typeof value !== 'string') return '00:00';
@@ -618,18 +691,18 @@ const LoginScreen = ({ onLogin }) => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen w-full relative z-10 p-4">
-      <div className="macos-glass-panel p-8 md:p-10 rounded-2xl w-full max-w-md animate-in zoom-in-95 duration-500 shadow-2xl relative overflow-hidden group border-white/20">
+    <div className="flex items-center justify-center min-h-[100dvh] w-full relative z-10 p-3 sm:p-4 md:p-8">
+      <div className="macos-glass-panel p-6 sm:p-8 md:p-10 rounded-2xl w-full max-w-sm sm:max-w-md animate-in zoom-in-95 duration-500 shadow-2xl relative overflow-hidden group border-white/20">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent blur-sm"></div>
 
         <div className="flex flex-col items-center mb-8">
           <img
             src={attendifyLogo}
             alt="Attendify logo"
-            className="w-16 h-16 rounded-2xl shadow-lg mb-4 transform transition-transform group-hover:scale-105 duration-300"
+            className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl shadow-lg mb-3 sm:mb-4 transform transition-transform group-hover:scale-105 duration-300"
           />
-          <h1 className="text-2xl font-bold text-white tracking-tight">Attendify</h1>
-          <p className="text-sm text-gray-400 mt-1">Class Management System</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Attendify</h1>
+          <p className="text-xs sm:text-sm text-gray-400 mt-1">Class Management System</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -639,7 +712,7 @@ const LoginScreen = ({ onLogin }) => {
               <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input 
                 type="email"
-                className="w-full pl-10 pr-4 py-3 rounded-xl text-sm text-white placeholder-gray-500 macos-input outline-none focus:ring-1 focus:ring-blue-500/50"
+                className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder-gray-500 macos-input outline-none focus:ring-1 focus:ring-blue-500/50"
                 value={credentials.email}
                 onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
                 required
@@ -653,7 +726,7 @@ const LoginScreen = ({ onLogin }) => {
               <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input 
                 type={showPassword ? "text" : "password"}
-                className="w-full pl-10 pr-10 py-3 rounded-xl text-sm text-white placeholder-gray-500 macos-input outline-none focus:ring-1 focus:ring-blue-500/50"
+                className="w-full pl-10 pr-10 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder-gray-500 macos-input outline-none focus:ring-1 focus:ring-blue-500/50"
                 value={credentials.password}
                 onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
                 required
@@ -671,7 +744,7 @@ const LoginScreen = ({ onLogin }) => {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full mt-6 bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-blue-600/30 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full mt-5 sm:mt-6 bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 sm:py-3 rounded-xl transition-all shadow-lg shadow-blue-600/30 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {loading ? (
               <Loader2 size={18} className="animate-spin" />
@@ -943,6 +1016,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
 
 const DashboardView = ({ students, activeClass, allClasses }) => {
   const classStudents = students.filter(s => s.classId === activeClass.id);
+  const assessmentTypes = activeClass?.assessmentTypes ?? DEFAULT_ASSESSMENTS;
   const presentCount = classStudents.filter(s => s.status === 'Present').length;
   const lateCount = classStudents.filter(s => s.status === 'Late').length;
   const sickCount = classStudents.filter(s => s.status === 'Sick').length;
@@ -950,12 +1024,12 @@ const DashboardView = ({ students, activeClass, allClasses }) => {
   const absentCount = classStudents.filter(s => s.status === 'Absent').length;
   const attendanceRate = classStudents.length ? Math.round((presentCount / classStudents.length) * 100) : 0;
   
-  const totalAvg = classStudents.reduce((acc, s) => acc + (s.grades.quiz1 + s.grades.mid + s.grades.project) / 3, 0);
+  const totalAvg = classStudents.reduce((acc, s) => acc + calculateGradesAverage(s.grades, assessmentTypes), 0);
   const classAvg = classStudents.length ? Math.round(totalAvg / classStudents.length) : 0;
 
   // Get top performing students
   const topStudents = [...classStudents]
-    .map(s => ({ ...s, avg: Math.round((s.grades.quiz1 + s.grades.mid + s.grades.project) / 3) }))
+    .map(s => ({ ...s, avg: calculateGradesAverage(s.grades, assessmentTypes) }))
     .sort((a, b) => b.avg - a.avg)
     .slice(0, 3);
 
@@ -1178,7 +1252,7 @@ const AttendanceView = ({ students, activeClass, onUpdateStatus }) => {
   const classStudents = students.filter(s => s.classId === activeClass.id);
 
   return (
-    <div className="flex flex-col h-full animate-slide-in">
+    <div className="flex flex-col h-full min-h-0 animate-slide-in">
       <div className="macos-glass-panel rounded-xl overflow-hidden flex-1 flex flex-col">
         <div className="px-4 py-3 border-b border-white/10 bg-white/5 flex justify-between items-center">
           <span className="text-xs font-semibold text-gray-400 uppercase">Attendance: {activeClass.name}</span>
@@ -1310,41 +1384,43 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
         </button>
       </div>
 
-      <div className="macos-glass-panel rounded-xl overflow-hidden flex-1">
-        <table className="w-full text-left">
-          <thead className="bg-white/5 border-b border-white/10">
-            <tr className="text-gray-400 text-xs uppercase font-medium">
-              <th className="p-4 pl-6">Student No.</th>
-              <th className="p-4">Full Name</th>
-              <th className="p-4">Email</th>
-              <th className="p-4">Gender</th>
-              <th className="p-4 text-right pr-6">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            {classStudents.map((student) => (
-              <tr key={student.id} className="hover:bg-white/5 group">
-                <td className="p-4 pl-6 text-gray-500 text-sm">{student.studentNumber || '-'}</td>
-                <td className="p-4 text-gray-200 text-sm font-medium">{student.name}</td>
-                <td className="p-4 text-gray-300 text-sm">{student.email || '-'}</td>
-                <td className="p-4 text-gray-300 text-sm">{student.gender || '-'}</td>
-                <td className="p-4 text-right pr-6 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openEdit(student)} className="p-1.5 rounded-md bg-white/10 text-blue-400 hover:bg-blue-500/20 transition-colors">
-                    <Edit3 size={14} />
-                  </button>
-                  <button onClick={() => onDeleteStudent(student.id)} className="p-1.5 rounded-md bg-white/10 text-red-400 hover:bg-red-500/20 transition-colors">
-                    <Trash2 size={14} />
-                  </button>
-                </td>
+      <div className="macos-glass-panel rounded-xl overflow-hidden flex-1 min-h-0">
+        <div className="w-full overflow-x-auto">
+          <table className="w-full table-fixed text-left">
+            <thead className="bg-white/5 border-b border-white/10">
+              <tr className="text-gray-400 text-xs uppercase font-medium">
+                <th className="p-3 pl-4 sm:p-4 sm:pl-6">Student No.</th>
+                <th className="p-3 sm:p-4">Full Name</th>
+                <th className="p-3 sm:p-4">Email</th>
+                <th className="p-3 sm:p-4 hidden sm:table-cell">Gender</th>
+                <th className="p-3 sm:p-4 text-right pr-4 sm:pr-6">Actions</th>
               </tr>
-            ))}
-             {classStudents.length === 0 && (
-                <tr>
-                  <td colSpan="5" className="p-8 text-center text-gray-500 text-sm">No student data.</td>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {classStudents.map((student) => (
+                <tr key={student.id} className="hover:bg-white/5 group">
+                  <td className="p-3 pl-4 sm:p-4 sm:pl-6 text-gray-500 text-sm">{student.studentNumber || '-'}</td>
+                  <td className="p-3 sm:p-4 text-gray-200 text-sm font-medium break-words">{student.name}</td>
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm break-all">{student.email || '-'}</td>
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm hidden sm:table-cell">{student.gender || '-'}</td>
+                  <td className="p-3 sm:p-4 text-right pr-4 sm:pr-6 flex justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => openEdit(student)} className="p-1.5 rounded-md bg-white/10 text-blue-400 hover:bg-blue-500/20 transition-colors">
+                      <Edit3 size={14} />
+                    </button>
+                    <button onClick={() => onDeleteStudent(student.id)} className="p-1.5 rounded-md bg-white/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
                 </tr>
-              )}
-          </tbody>
-        </table>
+              ))}
+               {classStudents.length === 0 && (
+                  <tr>
+                    <td colSpan="5" className="p-8 text-center text-gray-500 text-sm">No student data.</td>
+                  </tr>
+                )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <Modal 
@@ -1381,12 +1457,11 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
               required
               value={formData.gender}
               onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none transition-all"
+              className="w-full macos-select rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 transition-all"
             >
               <option value="" disabled>Select gender</option>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
-              <option value="Other">Other</option>
             </select>
           </div>
           <div>
@@ -1817,7 +1892,349 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
   );
 };
 
-const ClassManager = ({ classes, activeClassId, setActiveClassId, onAddClass, onDeleteClass }) => {
+// --- GRADES VIEW COMPONENT ---
+const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentTypes }) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [gradeForm, setGradeForm] = useState({});
+  const [attitudeForm, setAttitudeForm] = useState('ME');
+  const [newAssessment, setNewAssessment] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const classStudents = students.filter(s => s.classId === activeClass.id);
+  const assessmentTypes = activeClass?.assessmentTypes ?? DEFAULT_ASSESSMENTS;
+
+  const calculateAverage = (grades) => calculateGradesAverage(grades, assessmentTypes);
+
+  const getGradeColor = (avg) => {
+    if (avg >= 85) return 'text-green-400';
+    if (avg >= 70) return 'text-blue-400';
+    if (avg >= 55) return 'text-yellow-400';
+    return 'text-red-400';
+  };
+
+  const getGradeBadge = (avg) => {
+    if (avg >= 85) return { label: 'A', bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' };
+    if (avg >= 70) return { label: 'B', bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' };
+    if (avg >= 55) return { label: 'C', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' };
+    return { label: 'D', bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' };
+  };
+
+  const getAttitudeBadge = (value) => {
+    if (value === 'EE') return { label: 'EE', bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' };
+    if (value === 'ME') return { label: 'ME', bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' };
+    return { label: 'DME', bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' };
+  };
+
+  const openEditModal = (student) => {
+    setSelectedStudent(student);
+    const nextForm = assessmentTypes.reduce((acc, type) => {
+      acc[type] = safeNumber(student.grades?.[type]);
+      return acc;
+    }, {});
+    setGradeForm(nextForm);
+    setAttitudeForm(student.attitude || 'ME');
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedStudent) return;
+
+    setSaving(true);
+    await onUpdateGrades(selectedStudent.id, { grades: gradeForm, attitude: attitudeForm });
+    setSaving(false);
+    setIsModalOpen(false);
+    setSelectedStudent(null);
+  };
+
+  const handleGradeChange = (field, value) => {
+    const numValue = Math.min(100, Math.max(0, parseInt(value, 10) || 0));
+    setGradeForm(prev => ({ ...prev, [field]: numValue }));
+  };
+
+  const handleAddAssessment = (event) => {
+    event.preventDefault();
+    if (!activeClass?.id) return;
+    const label = newAssessment.trim();
+    if (!label) return;
+    if (assessmentTypes.some(item => item.toLowerCase() === label.toLowerCase())) {
+      setNewAssessment('');
+      return;
+    }
+    const next = [...assessmentTypes, label];
+    onUpdateAssessmentTypes?.(activeClass.id, next);
+    setNewAssessment('');
+  };
+
+  const handleRemoveAssessment = (label) => {
+    if (!activeClass?.id) return;
+    if (assessmentTypes.length <= 1) return;
+    const next = assessmentTypes.filter(item => item !== label);
+    onUpdateAssessmentTypes?.(activeClass.id, next);
+  };
+
+  // Calculate class statistics
+  const classStats = useMemo(() => {
+    if (classStudents.length === 0) {
+      return { classAverage: 0, belowStandard: 0, attitudeScore: 0, attitudeLabel: 'ME' };
+    }
+    const averages = classStudents.map(student => calculateGradesAverage(student.grades, assessmentTypes));
+    const classAverage = Math.round(averages.reduce((acc, value) => acc + value, 0) / classStudents.length);
+    const belowStandard = averages.filter(avg => avg < 65).length;
+    const attitudeTotal = classStudents.reduce((acc, student) => acc + getAttitudeScore(student.attitude), 0);
+    const attitudeScore = attitudeTotal / classStudents.length;
+    const attitudeLabel = getAttitudeLabel(attitudeScore);
+    return { classAverage, belowStandard, attitudeScore, attitudeLabel };
+  }, [classStudents, assessmentTypes]);
+
+  return (
+    <div className="flex flex-col h-full animate-slide-in">
+      {/* Stats Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <div className="macos-glass-panel rounded-xl p-3">
+          <p className="text-[10px] text-gray-400 uppercase font-medium">Class Average</p>
+          <p className={`text-xl font-bold ${getGradeColor(classStats.classAverage)}`}>{classStats.classAverage}</p>
+        </div>
+        <div className="macos-glass-panel rounded-xl p-3">
+          <p className="text-[10px] text-gray-400 uppercase font-medium">Below Standard</p>
+          <p className="text-xl font-bold text-red-400">{classStats.belowStandard}</p>
+          <p className="text-[10px] text-gray-500 mt-1">Scores below 65</p>
+        </div>
+        <div className="macos-glass-panel rounded-xl p-3">
+          <p className="text-[10px] text-gray-400 uppercase font-medium">Attitude Average</p>
+          <p className="text-xl font-bold text-blue-400">{classStats.attitudeLabel}</p>
+          <p className="text-[10px] text-gray-500 mt-1">EE / ME / DME</p>
+        </div>
+      </div>
+
+      {/* Assessment Types */}
+      <div className="macos-glass-panel rounded-xl p-3 mb-4">
+        <div className="flex flex-col md:flex-row md:items-center gap-3">
+          <div className="flex-1">
+            <p className="text-[10px] text-gray-400 uppercase font-medium">Assessment Types</p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {assessmentTypes.map((type) => (
+                <span key={type} className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs bg-white/10 text-gray-200 border border-white/10">
+                  {type}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAssessment(type)}
+                    disabled={assessmentTypes.length <= 1}
+                    className="text-gray-400 hover:text-white disabled:opacity-40"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+              {assessmentTypes.length === 0 && (
+                <span className="text-xs text-gray-500">No assessments yet.</span>
+              )}
+            </div>
+          </div>
+          <form onSubmit={handleAddAssessment} className="flex items-center gap-2 w-full md:w-auto">
+            <input
+              value={newAssessment}
+              onChange={(e) => setNewAssessment(e.target.value)}
+              className="w-full md:w-48 bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 outline-none transition-all"
+              placeholder="Add assessment"
+            />
+            <button type="submit" className="px-3 py-2 rounded-lg text-xs bg-blue-600 text-white hover:bg-blue-500 transition-colors">
+              Add
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* Grades Table */}
+      <div className="macos-glass-panel rounded-xl overflow-hidden flex flex-col flex-1 min-h-0">
+        <div className="px-4 py-3 border-b border-white/10 bg-white/5 flex justify-between items-center shrink-0">
+          <span className="text-xs font-semibold text-gray-400 uppercase">Grades: {activeClass.name}</span>
+          <span className="text-xs text-gray-400">{classStudents.length} Students</span>
+        </div>
+        
+        <div className="overflow-auto flex-1 min-h-0">
+          <table className="min-w-max w-full table-fixed text-left border-collapse">
+            <thead className="sticky top-0 bg-[#1e1e1e] z-10 shadow-md">
+              <tr className="border-b border-white/10 text-gray-400 text-[10px] font-semibold uppercase tracking-wide">
+                <th className="p-3 pl-6 sticky left-0 z-20 bg-[#1e1e1e] w-56">Student</th>
+                {assessmentTypes.map((type) => (
+                  <th key={type} className="p-3 text-center w-24">
+                    <span className="block max-w-[88px] mx-auto truncate">{type}</span>
+                  </th>
+                ))}
+                <th className="p-3 text-center w-20">Average</th>
+                <th className="p-3 text-center w-20">Attitude</th>
+                <th className="p-3 text-center w-16">Grade</th>
+                <th className="p-3 text-right pr-6 w-16">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {classStudents.map((student) => {
+                const avg = calculateAverage(student.grades);
+                const badge = getGradeBadge(avg);
+                const attitudeBadge = getAttitudeBadge(student.attitude || 'ME');
+                return (
+                  <tr key={student.id} className="macos-table-row transition-colors cursor-default group hover:bg-white/5">
+                    <td className="p-3 pl-6 sticky left-0 z-10 bg-[#1b1b1f]/95 backdrop-blur-sm w-56">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-600 to-gray-500 flex items-center justify-center text-xs text-white font-medium shadow-sm">
+                          {student.avatar}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-sm text-gray-200 font-medium block truncate">{student.name}</span>
+                          <span className="text-[10px] text-gray-500 truncate">{student.studentNumber || '-'}</span>
+                        </div>
+                      </div>
+                    </td>
+                    {assessmentTypes.map((type) => (
+                      <td key={type} className="p-3 text-center w-24">
+                        <span className={`text-sm font-medium ${getGradeColor(safeNumber(student.grades?.[type]))}`}>
+                          {safeNumber(student.grades?.[type])}
+                        </span>
+                      </td>
+                    ))}
+                    <td className="p-3 text-center w-20">
+                      <span className={`text-lg font-bold ${getGradeColor(avg)}`}>
+                        {avg}
+                      </span>
+                    </td>
+                    <td className="p-3 text-center w-20">
+                      <span className={`px-2 py-1 rounded-md text-xs font-bold border ${attitudeBadge.bg} ${attitudeBadge.text} ${attitudeBadge.border}`}>
+                        {attitudeBadge.label}
+                      </span>
+                    </td>
+                    <td className="p-3 text-center w-16">
+                      <span className={`px-2 py-1 rounded-md text-xs font-bold border ${badge.bg} ${badge.text} ${badge.border}`}>
+                        {badge.label}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right pr-6 w-16">
+                      <button 
+                        onClick={() => openEditModal(student)}
+                        className="p-1.5 rounded-md bg-white/10 text-blue-400 hover:bg-blue-500/20 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {classStudents.length === 0 && (
+                <tr>
+                  <td colSpan={assessmentTypes.length + 5} className="p-8 text-center text-gray-500 text-sm">
+                    No students in this class yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Edit Grades Modal */}
+      <Modal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        title={`Edit Grades: ${selectedStudent?.name || ''}`}
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Preview Average */}
+          <div className="bg-white/5 rounded-lg p-4 text-center border border-white/10">
+            <p className="text-xs text-gray-400 mb-1">Predicted Average</p>
+            <p className={`text-3xl font-bold ${getGradeColor(calculateAverage(gradeForm))}`}>
+              {calculateAverage(gradeForm)}
+            </p>
+            <span className={`inline-block mt-2 px-3 py-1 rounded-md text-sm font-bold border ${getGradeBadge(calculateAverage(gradeForm)).bg} ${getGradeBadge(calculateAverage(gradeForm)).text} ${getGradeBadge(calculateAverage(gradeForm)).border}`}>
+              Grade {getGradeBadge(calculateAverage(gradeForm)).label}
+            </span>
+          </div>
+
+          {/* Attitude Selection */}
+          <div>
+            <label className="block text-xs text-gray-400 mb-2">Attitude</label>
+            <div className="grid grid-cols-3 gap-2">
+              {ATTITUDE_OPTIONS.map(option => {
+                const isSelected = attitudeForm === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setAttitudeForm(option)}
+                    className={`py-2 rounded-lg text-xs font-semibold border transition-all ${
+                      isSelected
+                        ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-600/20'
+                        : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Grade Inputs */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {assessmentTypes.map((type) => (
+              <div key={type}>
+                <label className="block text-xs text-gray-400 mb-1.5 text-center">{type}</label>
+                <input 
+                  type="number" 
+                  min="0"
+                  max="100"
+                  value={gradeForm[type] ?? 0}
+                  onChange={(e) => handleGradeChange(type, e.target.value)}
+                  className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-lg font-bold text-center focus:border-blue-500 outline-none transition-all"
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Grade Scale Reference */}
+          <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+            <p className="text-[10px] text-gray-400 uppercase font-medium mb-2">Grade Scale</p>
+            <div className="flex justify-between text-xs">
+              <span className="text-green-400">A: 85-100</span>
+              <span className="text-blue-400">B: 70-84</span>
+              <span className="text-yellow-400">C: 55-69</span>
+              <span className="text-red-400">D: 0-54</span>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-white/10">
+            <button 
+              type="button" 
+              onClick={() => setIsModalOpen(false)} 
+              className="px-4 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors"
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              disabled={saving}
+              className="px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-500 font-medium shadow-lg shadow-blue-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+            >
+              {saving ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save size={14} />
+                  Save Grades
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+};
+
+const ClassManager = ({ classes, activeClassId, setActiveClassId, onAddClass, onDeleteClass, onSelectClass }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [newClass, setNewClass] = useState({ name: '', subtitle: '', type: 'subject' });
 
@@ -1840,7 +2257,10 @@ const ClassManager = ({ classes, activeClassId, setActiveClassId, onAddClass, on
         {items.map(cls => (
           <div key={cls.id} className="group relative flex items-center">
             <button
-              onClick={() => setActiveClassId(cls.id)}
+              onClick={() => {
+                setActiveClassId(cls.id);
+                onSelectClass?.();
+              }}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex flex-col ${
                 activeClassId === cls.id ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
               }`}
@@ -1928,6 +2348,7 @@ const MainDashboard = ({ onLogout }) => {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataError, setDataError] = useState('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const activeClass = classes.find(c => c.id === activeClassId) || classes[0] || null;
 
@@ -2107,7 +2528,12 @@ const MainDashboard = ({ onLogout }) => {
 
     const { data, error } = await supabase
       .from('classes')
-      .insert({ name: trimmedName, subtitle: trimmedSubtitle, type: clsData.type })
+      .insert({
+        name: trimmedName,
+        subtitle: trimmedSubtitle,
+        type: clsData.type,
+        assessment_types: DEFAULT_ASSESSMENTS,
+      })
       .select()
       .single();
 
@@ -2119,6 +2545,36 @@ const MainDashboard = ({ onLogout }) => {
     const newClass = mapClassRow(data);
     setClasses(prev => [...prev, newClass]);
     setActiveClassId(newClass.id);
+  };
+
+  const updateAssessmentTypes = async (classId, nextTypes) => {
+    if (!supabase) {
+      setDataError('Supabase is not configured.');
+      return;
+    }
+
+    const sanitized = normalizeAssessmentTypes(nextTypes);
+    const { error } = await supabase
+      .from('classes')
+      .update({ assessment_types: sanitized })
+      .eq('id', classId);
+
+    if (error) {
+      setDataError('Failed to update assessment types.');
+      return;
+    }
+
+    setClasses(prev => prev.map(cls => cls.id === classId ? { ...cls, assessmentTypes: sanitized } : cls));
+    setStudents(prev => prev.map(student => {
+      if (student.classId !== classId) return student;
+      const nextGrades = { ...(student.grades || {}) };
+      sanitized.forEach((type) => {
+        if (nextGrades[type] === undefined) {
+          nextGrades[type] = 0;
+        }
+      });
+      return { ...student, grades: nextGrades };
+    }));
   };
 
   const deleteClass = async (id) => {
@@ -2158,6 +2614,15 @@ const MainDashboard = ({ onLogout }) => {
     if (!trimmedName || !trimmedEmail || !trimmedGender || !trimmedStudentNumber) return;
 
     const avatar = buildAvatar(trimmedName);
+    const classInfo = classes.find(cls => cls.id === classId);
+    const assessmentTypes = classInfo?.assessmentTypes ?? DEFAULT_ASSESSMENTS;
+    const grades = assessmentTypes.reduce((acc, type) => {
+      acc[type] = 0;
+      return acc;
+    }, {});
+    const legacyQuiz = safeNumber(grades.Quiz);
+    const legacyMid = safeNumber(grades.Midterm);
+    const legacyProject = safeNumber(grades.Project);
     const attendanceTime = getNowIso();
     const { data, error } = await supabase
       .from('students')
@@ -2170,9 +2635,11 @@ const MainDashboard = ({ onLogout }) => {
         student_number: trimmedStudentNumber,
         status: 'Present',
         attendance_time: attendanceTime,
-        quiz1: 0,
-        mid: 0,
-        project: 0,
+        grades,
+        attitude: 'ME',
+        quiz1: legacyQuiz,
+        mid: legacyMid,
+        project: legacyProject,
       })
       .select()
       .single();
@@ -2242,6 +2709,41 @@ const MainDashboard = ({ onLogout }) => {
     }
 
     setStudents(prev => prev.filter(s => s.id !== id));
+  };
+
+  const updateGrades = async (id, payload) => {
+    if (!supabase) {
+      setDataError('Supabase is not configured.');
+      return;
+    }
+
+    const grades = payload?.grades || {};
+    const attitude = payload?.attitude || 'ME';
+    const legacyQuiz = safeNumber(grades.Quiz);
+    const legacyMid = safeNumber(grades.Midterm);
+    const legacyProject = safeNumber(grades.Project);
+
+    const { error } = await supabase
+      .from('students')
+      .update({
+        grades,
+        attitude,
+        quiz1: legacyQuiz,
+        mid: legacyMid,
+        project: legacyProject,
+      })
+      .eq('id', id);
+
+    if (error) {
+      setDataError('Failed to update grades.');
+      return;
+    }
+
+    setStudents(prev => prev.map(s => s.id === id ? { 
+      ...s, 
+      grades,
+      attitude,
+    } : s));
   };
 
   // Schedule state
@@ -2359,17 +2861,31 @@ const MainDashboard = ({ onLogout }) => {
   };
 
   const navItems = [
-    { id: 'dashboard', icon: LayoutGrid, label: 'Dashboard' },
-    { id: 'schedule', icon: Calendar, label: 'Schedule' },
-    { id: 'attendance', icon: Users, label: 'Attendance' },
-    { id: 'students', icon: School, label: 'Students' }, 
-    { id: 'grades', icon: BookOpen, label: 'Grades' },
+    { id: 'dashboard', icon: SquaresFour, label: 'Dashboard' },
+    { id: 'schedule', icon: CalendarBlank, label: 'Schedule' },
+    { id: 'attendance', icon: UserCheck, label: 'Attendance' },
+    { id: 'students', icon: Student, label: 'Students' }, 
+    { id: 'grades', icon: PhBookOpen, label: 'Grades' },
   ];
 
   return (
-    <div className="w-full max-w-6xl h-[90vh] rounded-2xl shadow-2xl flex overflow-hidden border border-white/20 relative animate-in zoom-in-95 duration-300 z-10 backdrop-blur-sm">
-        
-        <aside className="w-64 macos-sidebar flex flex-col shrink-0 z-20">
+    <div className="w-full max-w-6xl h-[92dvh] md:h-[90vh] rounded-2xl shadow-2xl flex overflow-hidden border border-white/20 relative animate-in zoom-in-95 duration-300 z-10 backdrop-blur-sm">
+        {isSidebarOpen && (
+          <button
+            type="button"
+            aria-label="Close sidebar"
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 bg-black/35 backdrop-blur-sm z-20 md:hidden"
+          />
+        )}
+
+        <aside
+          className={`w-72 md:w-64 macos-sidebar mobile-panel flex flex-col shrink-0 z-30 md:z-20 fixed md:static inset-y-3 left-3 md:inset-y-0 md:left-0 transform md:translate-x-0 transition-[transform,opacity] duration-300 rounded-2xl md:rounded-none border border-white/15 md:border-0 shadow-2xl md:shadow-none overflow-hidden ${
+            isSidebarOpen
+              ? 'translate-x-0 opacity-100'
+              : '-translate-x-[120%] opacity-0 pointer-events-none'
+          } md:opacity-100 md:pointer-events-auto`}
+        >
           <div className="h-14 px-6 flex items-center gap-2 border-b border-white/5">
              <img src={attendifyLogo} alt="Attendify logo" className="w-7 h-7 rounded-lg" />
              <span className="font-bold text-lg text-white tracking-tight">Attendify</span>
@@ -2380,24 +2896,32 @@ const MainDashboard = ({ onLogout }) => {
             activeClassId={activeClassId} 
             setActiveClassId={setActiveClassId} 
             onAddClass={addClass} 
-            onDeleteClass={deleteClass} 
+            onDeleteClass={deleteClass}
+            onSelectClass={() => setIsSidebarOpen(false)}
           />
 
           <div className="px-4 mt-2">
             <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-2 mb-2">Menu</h2>
             <nav className="space-y-1">
-              {navItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    activeTab === item.id ? 'nav-item-active' : 'text-gray-300 nav-item-inactive'
-                  }`}
-                >
-                  <item.icon size={16} />
-                  <span>{item.label}</span>
-                </button>
-              ))}
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setIsSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      isActive ? 'nav-item-active' : 'text-gray-300 nav-item-inactive'
+                    }`}
+                  >
+                    <Icon size={18} weight={isActive ? 'fill' : 'regular'} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
             </nav>
           </div>
 
@@ -2443,12 +2967,22 @@ const MainDashboard = ({ onLogout }) => {
         />
 
         <main className="flex-1 macos-content flex flex-col min-w-0 relative z-10">
-          <header className="h-14 flex items-center justify-between px-6 border-b border-white/10 bg-white/5 backdrop-blur-md">
-            <div className="flex flex-col">
-              <h1 className="text-sm font-semibold text-white">{navItems.find(n => n.id === activeTab)?.label}</h1>
-              <span className="text-[10px] text-gray-400">
-                {activeClass ? `${activeClass.name} - ${activeClass.subtitle}` : 'No classes yet'}
-              </span>
+          <header className="h-14 flex items-center justify-between px-4 md:px-6 border-b border-white/10 bg-white/5 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(true)}
+                className="md:hidden p-2 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors"
+                aria-label="Open sidebar"
+              >
+                <Menu size={16} />
+              </button>
+              <div className="flex flex-col">
+                <h1 className="text-sm font-semibold text-white">{navItems.find(n => n.id === activeTab)?.label}</h1>
+                <span className="text-[10px] text-gray-400">
+                  {activeClass ? `${activeClass.name} - ${activeClass.subtitle}` : 'No classes yet'}
+                </span>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="relative group">
@@ -2456,7 +2990,7 @@ const MainDashboard = ({ onLogout }) => {
                 <input 
                   type="text" 
                   placeholder="Search..." 
-                  className="bg-black/20 border border-transparent focus:border-blue-500/50 hover:bg-black/30 text-white text-xs rounded-md pl-9 pr-3 py-1.5 w-48 transition-all outline-none"
+                  className="bg-black/20 border border-transparent focus:border-blue-500/50 hover:bg-black/30 text-white text-xs rounded-md pl-9 pr-3 py-1.5 w-32 sm:w-40 md:w-48 transition-all outline-none"
                 />
               </div>
               <button className="p-1.5 rounded-md text-gray-400 hover:bg-white/10 hover:text-white transition-colors relative">
@@ -2509,10 +3043,12 @@ const MainDashboard = ({ onLogout }) => {
                   />
                 )}
                 {activeTab === 'grades' && (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                    <BookOpen size={48} className="mb-4 opacity-20" />
-                    <p className="text-sm">Fitur Grades akan menggunakan logika yang sama dengan Students.</p>
-                  </div>
+                  <GradesView 
+                    students={students} 
+                    activeClass={activeClass} 
+                    onUpdateGrades={updateGrades}
+                    onUpdateAssessmentTypes={updateAssessmentTypes}
+                  />
                 )}
               </>
             )}
@@ -2581,7 +3117,7 @@ const App = () => {
 
   if (!authReady) {
     return (
-      <div className="min-h-screen macos-wallpaper dark flex items-center justify-center p-2 md:p-8 overflow-hidden font-sans relative">
+      <div className="min-h-[100dvh] macos-wallpaper dark flex items-center justify-center p-3 md:p-8 overflow-hidden font-sans relative">
         <style>{styleTag}</style>
         <ParticleBackground />
         <div className="macos-glass-panel px-6 py-5 rounded-2xl flex items-center gap-3 text-gray-300 text-sm">
@@ -2595,7 +3131,7 @@ const App = () => {
   const introActive = !isAuthenticated && showIntro;
 
   return (
-    <div className="min-h-screen macos-wallpaper dark flex items-center justify-center p-2 md:p-8 overflow-hidden font-sans relative">
+    <div className="min-h-[100dvh] macos-wallpaper dark flex items-center justify-center p-3 md:p-8 overflow-hidden font-sans relative">
       <style>{styleTag}</style>
       <ParticleBackground />
 

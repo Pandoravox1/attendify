@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@nextui-org/react": "^2.6.11",
+    "@phosphor-icons/react": "^2.1.10",
     "@supabase/supabase-js": "^2.49.1",
     "framer-motion": "^12.23.26",
     "lucide-react": "^0.474.0",
