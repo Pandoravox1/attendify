@@ -1596,6 +1596,11 @@ const AttendanceView = ({
       return haystack.some(value => value.includes(normalizedQuery));
     });
   }, [classStudents, normalizedQuery]);
+  const sortedStudents = useMemo(() => {
+    const list = [...filteredStudents];
+    list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
+    return list;
+  }, [filteredStudents]);
 
   useEffect(() => {
     if (exportType === 'custom') return;
@@ -1725,7 +1730,7 @@ const AttendanceView = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {filteredStudents.map((student) => {
+              {sortedStudents.map((student) => {
                 const record = attendanceRecords?.[String(student.id)];
                 const displayStatus = record?.status || STATUS_EMPTY_OPTION.label;
                 const displayTime = record?.attendanceTime || null;
