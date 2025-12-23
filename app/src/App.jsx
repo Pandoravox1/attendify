@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { DatePicker, TimeInput } from '@nextui-org/react';
 import { Time, parseDate } from '@internationalized/date';
+import * as XLSX from 'xlsx';
 import attendifyLogo from './assets/attendify-logo.png';
 import { BookOpen as PhBookOpen, CalendarBlank, EnvelopeSimple, Eye as PhEye, EyeSlash, LockKey, SquaresFour, Student, UserCheck } from '@phosphor-icons/react';
 import { 
@@ -32,7 +33,9 @@ import {
   Phone,
   MapPin,
   Camera,
-  Save
+  Save,
+  Download,
+  FileUp
 } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 
@@ -270,6 +273,7 @@ const STATUS_OPTIONS = [
   { label: 'Excused', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   { label: 'Absent', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 ];
+const STATUS_EMPTY_OPTION = { label: 'Not set', color: 'bg-white/10 text-gray-300 border-white/10' };
 
 const buildAvatar = (name) => (
   name
@@ -431,6 +435,84 @@ const formatLocalDateKey = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const getTodayKey = () => formatLocalDateKey(new Date());
+
+const NOTIFICATION_STORAGE_KEY = 'attendify.notifications';
+const NOTIFICATION_DATE_KEY = 'attendify.notifications_date';
+const NOTIFICATION_READ_KEY = 'attendify.notifications_read_at';
+const MAX_NOTIFICATIONS = 40;
+
+const parseLocalDateKey = (value) => {
+  if (!value || typeof value !== 'string') return null;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return new Date(year, month - 1, day);
+};
+
+const buildDateRangeList = (startKey, endKey) => {
+  const startDate = parseLocalDateKey(startKey);
+  const endDate = parseLocalDateKey(endKey);
+  if (!startDate || !endDate) return [];
+  if (startDate > endDate) return [];
+  const dates = [];
+  const cursor = new Date(startDate);
+  while (cursor <= endDate) {
+    dates.push(formatLocalDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+};
+
+const getWeekRange = (dateKey) => {
+  const date = parseLocalDateKey(dateKey);
+  if (!date) return { start: dateKey, end: dateKey };
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const start = new Date(date);
+  start.setDate(date.getDate() + diff);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return {
+    start: formatLocalDateKey(start),
+    end: formatLocalDateKey(end),
+  };
+};
+
+const getMonthRange = (dateKey) => {
+  const date = parseLocalDateKey(dateKey);
+  if (!date) return { start: dateKey, end: dateKey };
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  return {
+    start: formatLocalDateKey(start),
+    end: formatLocalDateKey(end),
+  };
+};
+
+const getExportRange = (type, anchorDate) => {
+  const dateKey = anchorDate || getTodayKey();
+  if (type === 'weekly') return getWeekRange(dateKey);
+  if (type === 'monthly') return getMonthRange(dateKey);
+  return { start: dateKey, end: dateKey };
+};
+
+const formatDayLabel = (dateKey) => {
+  const date = parseLocalDateKey(dateKey);
+  if (!date) return '';
+  return date.toLocaleDateString('id-ID', { weekday: 'short' });
+};
+
+const normalizeSearchValue = (value) => String(value || '').toLowerCase().trim();
+
+const formatNotificationTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+};
+
+const normalizeHeaderKey = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
 const mapClassRow = (row) => ({
   id: row.id,
   type: row.type,
@@ -458,13 +540,24 @@ const mapStudentRow = (row) => {
     email: row.email || '',
     gender: row.gender || '',
     studentNumber: row.student_number || '',
-    status: normalizeStatus(row.status),
-    attendanceTime: row.attendance_time || null,
     attitude: row.attitude || 'ME',
     zeroExclusions: normalizeZeroExclusions(row.zero_exclusions),
     zeroExclusionNotes: normalizeZeroExclusionNotes(row.zero_exclusion_notes),
     grades: normalizedGrades,
   };
+};
+
+const buildAttendanceRecordMap = (rows = []) => {
+  const map = {};
+  rows.forEach((row) => {
+    if (!row) return;
+    const key = String(row.student_id);
+    map[key] = {
+      status: normalizeStatus(row.status),
+      attendanceTime: row.attendance_time || null,
+    };
+  });
+  return map;
 };
 
 const normalizeTimeValue = (value) => {
@@ -1121,14 +1214,18 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
   );
 };
 
-const DashboardView = ({ students, activeClass, allClasses }) => {
+const DashboardView = ({ students, activeClass, attendanceRecords }) => {
   const classStudents = students.filter(s => isSameClassId(s.classId, activeClass.id));
   const assessmentTypes = activeClass?.assessmentTypes ?? DEFAULT_ASSESSMENTS;
-  const presentCount = classStudents.filter(s => s.status === 'Present').length;
-  const lateCount = classStudents.filter(s => s.status === 'Late').length;
-  const sickCount = classStudents.filter(s => s.status === 'Sick').length;
-  const permitCount = classStudents.filter(s => s.status === 'Excused').length;
-  const absentCount = classStudents.filter(s => s.status === 'Absent').length;
+  const attendanceMap = attendanceRecords || {};
+  const statusList = classStudents
+    .map(student => attendanceMap[String(student.id)]?.status)
+    .filter(Boolean);
+  const presentCount = statusList.filter(status => status === 'Present').length;
+  const lateCount = statusList.filter(status => status === 'Late').length;
+  const sickCount = statusList.filter(status => status === 'Sick').length;
+  const permitCount = statusList.filter(status => status === 'Excused').length;
+  const absentCount = statusList.filter(status => status === 'Absent').length;
   const attendanceRate = classStudents.length ? Math.round((presentCount / classStudents.length) * 100) : 0;
   
   const classAverages = classStudents
@@ -1366,17 +1463,254 @@ const DashboardView = ({ students, activeClass, allClasses }) => {
   );
 };
 
-const AttendanceView = ({ students, activeClass, onUpdateStatus }) => {
+const AttendanceDatePicker = ({ value, onChange }) => {
+  const dateValue = useMemo(() => parseDateString(value), [value]);
+
+  return (
+    <DatePicker
+      aria-label="Attendance date"
+      value={dateValue}
+      onChange={(nextValue) => {
+        const formatted = formatDateString(nextValue);
+        if (formatted) {
+          onChange(formatted);
+        }
+      }}
+      classNames={{
+        base: 'w-[150px] min-w-[140px]',
+        inputWrapper: '!bg-black/30 !border-white/20 rounded-lg px-3 py-1.5 text-white shadow-none transition-all focus-within:!border-blue-500 hover:!bg-black/40 data-[hover=true]:!bg-black/40',
+        innerWrapper: 'gap-1',
+        input: 'text-xs text-white',
+        segment: 'text-xs text-white data-[focus=true]:bg-white/10 rounded-sm',
+        separator: 'text-xs text-white',
+        selectorButton: 'text-gray-400 hover:text-white',
+      }}
+      popoverProps={{
+        placement: 'bottom-end',
+        offset: 8,
+        shouldFlip: true,
+        classNames: {
+          content: 'bg-[#1b1b1b] text-white border border-white/10 shadow-2xl w-[260px] max-w-[85vw] overflow-hidden',
+        },
+      }}
+      calendarProps={{
+        classNames: {
+          base: 'bg-[#1b1b1b] text-white w-[260px]',
+          headerWrapper: 'bg-[#1b1b1b] text-white border-b border-white/10',
+          header: 'text-white',
+          title: 'text-gray-200',
+          nextButton: 'text-gray-400 hover:text-white',
+          prevButton: 'text-gray-400 hover:text-white',
+          gridWrapper: 'bg-[#1b1b1b]',
+          grid: 'bg-[#1b1b1b]',
+          gridHeader: 'bg-[#1b1b1b] text-gray-400',
+          gridHeaderRow: 'text-gray-400',
+          gridHeaderCell: 'text-gray-400',
+          gridBody: 'bg-[#1b1b1b]',
+          gridBodyRow: 'text-gray-200',
+          cell: 'text-gray-200',
+          cellButton: 'text-gray-200 data-[selected=true]:bg-blue-600 data-[selected=true]:text-white data-[hover=true]:bg-white/10 data-[outside-month=true]:text-gray-600 data-[disabled=true]:text-gray-600 data-[today=true]:ring-1 data-[today=true]:ring-blue-500',
+        },
+      }}
+    />
+  );
+};
+
+const AttendanceRangeDateInput = ({ label, value, onChange }) => {
+  const dateValue = useMemo(() => parseDateString(value), [value]);
+
+  return (
+    <DatePicker
+      label={label}
+      labelPlacement="outside"
+      value={dateValue}
+      onChange={(nextValue) => onChange(formatDateString(nextValue))}
+      classNames={{
+        base: 'w-full',
+        label: 'text-xs text-gray-400 mb-1',
+        inputWrapper: '!bg-black/30 !border-white/20 rounded-lg px-3 py-2 text-white shadow-none transition-all focus-within:!border-blue-500 hover:!bg-black/40 data-[hover=true]:!bg-black/40',
+        innerWrapper: 'gap-1',
+        input: 'text-sm text-white',
+        segment: 'text-sm text-white data-[focus=true]:bg-white/10 rounded-sm',
+        separator: 'text-sm text-white',
+        selectorButton: 'text-gray-400 hover:text-white',
+      }}
+      popoverProps={{
+        placement: 'bottom-end',
+        offset: 8,
+        shouldFlip: true,
+        classNames: {
+          content: 'bg-[#1b1b1b] text-white border border-white/10 shadow-2xl w-[260px] max-w-[85vw] overflow-hidden',
+        },
+      }}
+      calendarProps={{
+        classNames: {
+          base: 'bg-[#1b1b1b] text-white w-[260px]',
+          headerWrapper: 'bg-[#1b1b1b] text-white border-b border-white/10',
+          header: 'text-white',
+          title: 'text-gray-200',
+          nextButton: 'text-gray-400 hover:text-white',
+          prevButton: 'text-gray-400 hover:text-white',
+          gridWrapper: 'bg-[#1b1b1b]',
+          grid: 'bg-[#1b1b1b]',
+          gridHeader: 'bg-[#1b1b1b] text-gray-400',
+          gridHeaderRow: 'text-gray-400',
+          gridHeaderCell: 'text-gray-400',
+          gridBody: 'bg-[#1b1b1b]',
+          gridBodyRow: 'text-gray-200',
+          cell: 'text-gray-200',
+          cellButton: 'text-gray-200 data-[selected=true]:bg-blue-600 data-[selected=true]:text-white data-[hover=true]:bg-white/10 data-[outside-month=true]:text-gray-600 data-[disabled=true]:text-gray-600 data-[today=true]:ring-1 data-[today=true]:ring-blue-500',
+        },
+      }}
+    />
+  );
+};
+
+const AttendanceView = ({
+  students,
+  activeClass,
+  attendanceDate,
+  onAttendanceDateChange,
+  attendanceRecords,
+  onUpdateStatus,
+  isHistoryLoading,
+  searchQuery,
+}) => {
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportType, setExportType] = useState('daily');
+  const [exportRange, setExportRange] = useState(() => getExportRange('daily', attendanceDate));
+  const [exportError, setExportError] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
   const classStudents = students.filter(s => isSameClassId(s.classId, activeClass.id));
+  const normalizedQuery = useMemo(() => normalizeSearchValue(searchQuery), [searchQuery]);
+  const filteredStudents = useMemo(() => {
+    if (!normalizedQuery) return classStudents;
+    return classStudents.filter((student) => {
+      const haystack = [
+        student.name,
+        student.studentNumber,
+        student.email,
+        student.gender,
+      ].map(normalizeSearchValue);
+      return haystack.some(value => value.includes(normalizedQuery));
+    });
+  }, [classStudents, normalizedQuery]);
+
+  useEffect(() => {
+    if (exportType === 'custom') return;
+    setExportRange(getExportRange(exportType, attendanceDate));
+  }, [exportType, attendanceDate]);
+
+  const handleExport = async () => {
+    if (!supabase) {
+      setExportError('Supabase is not configured.');
+      return;
+    }
+    if (!activeClass?.id) {
+      setExportError('Class not found.');
+      return;
+    }
+    const { start, end } = exportRange;
+    const startDate = parseLocalDateKey(start);
+    const endDate = parseLocalDateKey(end);
+    if (!startDate || !endDate || startDate > endDate) {
+      setExportError('Tanggal belum valid.');
+      return;
+    }
+    if (!classStudents.length) {
+      setExportError('Tidak ada siswa dalam kelas ini.');
+      return;
+    }
+
+    setIsExporting(true);
+    setExportError('');
+
+    const { data, error } = await supabase
+      .from('attendance_records')
+      .select('student_id,attendance_date,status,attendance_time')
+      .eq('class_id', activeClass.id)
+      .gte('attendance_date', start)
+      .lte('attendance_date', end)
+      .order('attendance_date', { ascending: true });
+
+    if (error) {
+      setExportError('Gagal memuat data absensi.');
+      setIsExporting(false);
+      return;
+    }
+
+    const recordMap = new Map();
+    (data || []).forEach((record) => {
+      recordMap.set(`${record.attendance_date}|${record.student_id}`, record);
+    });
+
+    const sortedStudents = [...classStudents].sort((a, b) => {
+      const left = String(a.studentNumber || a.id);
+      const right = String(b.studentNumber || b.id);
+      return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    const dateList = buildDateRangeList(start, end);
+    const rows = [];
+    dateList.forEach((dateKey) => {
+      const dayLabel = formatDayLabel(dateKey);
+      sortedStudents.forEach((student) => {
+        const record = recordMap.get(`${dateKey}|${student.id}`);
+        rows.push({
+          Date: dateKey,
+          Day: dayLabel,
+          Class: activeClass.name,
+          'Student No.': student.studentNumber || String(student.id),
+          'Student Name': student.name,
+          Status: record?.status || STATUS_EMPTY_OPTION.label,
+          Time: record?.attendance_time ? formatAttendanceTime(record.attendance_time) : '',
+        });
+      });
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: ['Date', 'Day', 'Class', 'Student No.', 'Student Name', 'Status', 'Time'],
+    });
+    worksheet['!cols'] = [
+      { wch: 12 },
+      { wch: 8 },
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 24 },
+      { wch: 12 },
+      { wch: 8 },
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
+
+    const safeClass = String(activeClass.name || 'class').replace(/[^a-z0-9-_]+/gi, '_');
+    const fileName = start === end
+      ? `attendance_${safeClass}_${start}.xlsx`
+      : `attendance_${safeClass}_${start}_to_${end}.xlsx`;
+    XLSX.writeFile(workbook, fileName, { compression: true });
+
+    setIsExporting(false);
+    setIsExportOpen(false);
+  };
 
   return (
     <div className="flex flex-col h-full min-h-0 animate-slide-in">
       <div className="macos-glass-panel rounded-xl overflow-hidden flex-1 flex flex-col">
-        <div className="px-4 py-3 border-b border-white/10 bg-white/5 flex justify-between items-center">
+        <div className="px-4 py-3 border-b border-white/10 bg-white/5 flex flex-wrap justify-between items-center gap-3">
           <span className="text-xs font-semibold text-gray-400 uppercase">Attendance: {activeClass.name}</span>
           <div className="text-xs text-gray-400 flex items-center gap-2">
-            <Calendar size={12} /> {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+            <button
+              type="button"
+              onClick={() => setIsExportOpen(true)}
+              className="px-2.5 py-1.5 rounded-md border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2"
+            >
+              <Download size={12} />
+              Export
+            </button>
+            <Calendar size={12} />
+            <AttendanceDatePicker value={attendanceDate} onChange={onAttendanceDateChange} />
+            {isHistoryLoading && <span className="macos-spinner macos-spinner-sm" />}
           </div>
         </div>
         
@@ -1391,8 +1725,11 @@ const AttendanceView = ({ students, activeClass, onUpdateStatus }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {classStudents.map((student) => {
-                const currentStatus = STATUS_OPTIONS.find(s => s.label === student.status) || STATUS_OPTIONS[0];
+              {filteredStudents.map((student) => {
+                const record = attendanceRecords?.[String(student.id)];
+                const displayStatus = record?.status || STATUS_EMPTY_OPTION.label;
+                const displayTime = record?.attendanceTime || null;
+                const currentStatus = STATUS_OPTIONS.find(s => s.label === displayStatus) || STATUS_EMPTY_OPTION;
                 return (
                   <tr key={student.id} className="macos-table-row transition-colors cursor-default group">
                     <td className="p-4 pl-6 text-gray-500 text-sm font-mono">#{student.id}</td>
@@ -1409,7 +1746,7 @@ const AttendanceView = ({ students, activeClass, onUpdateStatus }) => {
                         onClick={(e) => { e.stopPropagation(); setOpenDropdown(openDropdown === student.id ? null : student.id); }}
                         className={`px-3 py-1.5 rounded-md text-xs font-medium border flex items-center justify-between gap-2 w-32 transition-all ${currentStatus.color} hover:brightness-110`}
                       >
-                        {student.status}
+                        {displayStatus}
                         <ChevronDown size={12} className="opacity-70" />
                       </button>
 
@@ -1421,12 +1758,12 @@ const AttendanceView = ({ students, activeClass, onUpdateStatus }) => {
                               <button
                                 key={opt.label}
                                 onClick={() => {
-                                  onUpdateStatus(student.id, opt.label);
+                                  onUpdateStatus(student.id, opt.label, attendanceDate);
                                   setOpenDropdown(null);
                                 }}
                                 className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-blue-500 hover:text-white flex items-center gap-2 transition-colors"
                               >
-                                <div className={`w-1.5 h-1.5 rounded-full ${opt.label === student.status ? 'bg-white' : 'bg-transparent'}`} />
+                                <div className={`w-1.5 h-1.5 rounded-full ${opt.label === displayStatus ? 'bg-white' : 'bg-transparent'}`} />
                                 {opt.label}
                               </button>
                             ))}
@@ -1435,7 +1772,7 @@ const AttendanceView = ({ students, activeClass, onUpdateStatus }) => {
                       )}
                     </td>
                     <td className="p-4 text-right pr-6 text-sm text-gray-500">
-                      {formatAttendanceTime(student.attendanceTime)}
+                      {formatAttendanceTime(displayTime)}
                     </td>
                   </tr>
                 );
@@ -1445,15 +1782,109 @@ const AttendanceView = ({ students, activeClass, onUpdateStatus }) => {
                   <td colSpan="4" className="p-8 text-center text-gray-500 text-sm">No students in this class yet.</td>
                 </tr>
               )}
+              {classStudents.length > 0 && filteredStudents.length === 0 && (
+                <tr>
+                  <td colSpan="4" className="p-8 text-center text-gray-500 text-sm">No matching students.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      <Modal
+        isOpen={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
+        title="Export Attendance"
+        size="lg"
+      >
+        <div className="space-y-4 text-sm text-gray-200">
+          <div>
+            <p className="text-xs text-gray-400 mb-2">Pilih periode ekspor</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { id: 'daily', label: 'Harian' },
+                { id: 'weekly', label: 'Mingguan' },
+                { id: 'monthly', label: 'Bulanan' },
+                { id: 'custom', label: 'Rentang' },
+              ].map((option) => {
+                const isActive = exportType === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setExportType(option.id)}
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                      isActive
+                        ? 'bg-blue-600/80 border-blue-500 text-white'
+                        : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {exportType === 'custom' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <AttendanceRangeDateInput
+                label="Tanggal mulai"
+                value={exportRange.start}
+                onChange={(value) => setExportRange(prev => ({ ...prev, start: value }))}
+              />
+              <AttendanceRangeDateInput
+                label="Tanggal selesai"
+                value={exportRange.end}
+                onChange={(value) => setExportRange(prev => ({ ...prev, end: value }))}
+              />
+            </div>
+          ) : (
+            <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-300">
+              Rentang tanggal: <span className="text-white">{exportRange.start}</span> sampai{' '}
+              <span className="text-white">{exportRange.end}</span>
+            </div>
+          )}
+
+          {exportError && (
+            <p className="text-xs text-red-400">{exportError}</p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsExportOpen(false)}
+              className="px-4 py-2 rounded-lg text-xs text-gray-300 hover:bg-white/10 transition-colors"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={isExporting}
+              className="px-4 py-2 rounded-lg text-xs bg-blue-600 text-white hover:bg-blue-500 font-semibold shadow-lg shadow-blue-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Menyiapkan...
+                </>
+              ) : (
+                <>
+                  <Download size={14} />
+                  Export .xlsx
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
 
-const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent, onEditStudent }) => {
+const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent, onEditStudent, onImportStudents, onRefreshStudents, onDeleteStudentsBatch, searchQuery }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [formError, setFormError] = useState('');
@@ -1463,6 +1894,19 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleteSaving, setDeleteSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+  const [bulkDeletePassword, setBulkDeletePassword] = useState('');
+  const [bulkDeleteError, setBulkDeleteError] = useState('');
+  const [bulkDeleteSaving, setBulkDeleteSaving] = useState(false);
+  const [sortKey, setSortKey] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importError, setImportError] = useState('');
+  const [importSummary, setImportSummary] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef(null);
   const [formData, setFormData] = useState({
     id: '',
     name: '',
@@ -1471,6 +1915,59 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
     studentNumber: '',
   });
   const classStudents = students.filter(s => isSameClassId(s.classId, activeClass.id));
+  const selectedCount = selectedIds.size;
+  const sortedStudents = useMemo(() => {
+    const list = [...classStudents];
+    const direction = sortDir === 'asc' ? 1 : -1;
+    const normalize = (value) => String(value || '').toLowerCase();
+    const getValue = (student) => {
+      if (sortKey === 'studentNumber') return normalize(student.studentNumber);
+      if (sortKey === 'name') return normalize(student.name);
+      if (sortKey === 'email') return normalize(student.email);
+      if (sortKey === 'gender') return normalize(student.gender);
+      return '';
+    };
+    list.sort((a, b) => {
+      const left = getValue(a);
+      const right = getValue(b);
+      if (sortKey === 'studentNumber') {
+        const base = left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+        return base === 0 ? normalize(a.name).localeCompare(normalize(b.name)) * direction : base * direction;
+      }
+      const base = left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+      return base === 0 ? normalize(a.name).localeCompare(normalize(b.name)) * direction : base * direction;
+    });
+    return list;
+  }, [classStudents, sortDir, sortKey]);
+  const normalizedQuery = useMemo(() => normalizeSearchValue(searchQuery), [searchQuery]);
+  const filteredStudents = useMemo(() => {
+    if (!normalizedQuery) return sortedStudents;
+    return sortedStudents.filter((student) => {
+      const haystack = [
+        student.name,
+        student.studentNumber,
+        student.email,
+        student.gender,
+      ].map(normalizeSearchValue);
+      return haystack.some(value => value.includes(normalizedQuery));
+    });
+  }, [sortedStudents, normalizedQuery]);
+  const allSelected = filteredStudents.length > 0 && filteredStudents.every(student => selectedIds.has(student.id));
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeClass?.id]);
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const allowed = new Set(classStudents.map(student => student.id));
+      const next = new Set();
+      prev.forEach((id) => {
+        if (allowed.has(id)) next.add(id);
+      });
+      return next;
+    });
+  }, [classStudents]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1508,11 +2005,48 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
     setIsModalOpen(true);
   };
 
+  const triggerImportPicker = () => {
+    setImportError('');
+    setImportSummary('');
+    setImportFile(null);
+    if (importInputRef.current) {
+      importInputRef.current.value = '';
+      importInputRef.current.click();
+    }
+    setIsImportOpen(true);
+  };
+
+  const closeImport = () => {
+    setIsImportOpen(false);
+    setImportError('');
+    setImportSummary('');
+    setImportFile(null);
+    if (importInputRef.current) {
+      importInputRef.current.value = '';
+    }
+  };
+
   const openDelete = (student) => {
     setDeleteTarget(student);
     setDeletePassword('');
     setDeleteError('');
     setIsDeleteOpen(true);
+  };
+
+  const toggleSort = (key) => {
+    if (sortKey === key) {
+      setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDir('asc');
+  };
+
+  const openBulkDelete = () => {
+    if (!selectedCount) return;
+    setBulkDeletePassword('');
+    setBulkDeleteError('');
+    setIsBulkDeleteOpen(true);
   };
 
   const handleDeleteConfirm = async () => {
@@ -1534,13 +2068,272 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
     setDeletePassword('');
   };
 
+  const handleBulkDeleteConfirm = async () => {
+    if (!selectedCount) {
+      setBulkDeleteError('No students selected.');
+      return;
+    }
+    if (!bulkDeletePassword) {
+      setBulkDeleteError('Password is required.');
+      return;
+    }
+    if (!onDeleteStudentsBatch) {
+      setBulkDeleteError('Bulk delete is not available.');
+      return;
+    }
+
+    setBulkDeleteSaving(true);
+    setBulkDeleteError('');
+    const ids = Array.from(selectedIds);
+    const result = await onDeleteStudentsBatch(ids, bulkDeletePassword);
+    setBulkDeleteSaving(false);
+    if (result && result.ok === false) {
+      setBulkDeleteError(result.message || 'Failed to delete students.');
+      return;
+    }
+    setSelectedIds(new Set());
+    setIsBulkDeleteOpen(false);
+    setBulkDeletePassword('');
+  };
+
+  const handleDownloadTemplate = () => {
+    const headers = ['Student Number', 'Full Name', 'Email', 'Gender'];
+    const worksheet = XLSX.utils.aoa_to_sheet([headers]);
+    worksheet['!cols'] = [
+      { wch: 18 },
+      { wch: 26 },
+      { wch: 28 },
+      { wch: 12 },
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Students');
+    XLSX.writeFile(workbook, 'student_import_template.xlsx', { compression: true });
+  };
+
+  const handleImportFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImportFile(file);
+    setImportError('');
+    setImportSummary('');
+    setIsImportOpen(true);
+    handleImportSubmit(file);
+  };
+
+  const handleImportSubmit = async (fileOverride) => {
+    if (!activeClass?.id) {
+      setImportError('Class not found.');
+      return;
+    }
+    if (isImporting) {
+      return;
+    }
+    const fileToImport = fileOverride || importFile;
+    if (!fileToImport) {
+      setImportError('Pilih file .xlsx terlebih dahulu.');
+      return;
+    }
+
+    setIsImporting(true);
+    setImportError('');
+    setImportSummary('');
+
+    try {
+      const buffer = await fileToImport.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        setImportError('File tidak valid.');
+        setIsImporting(false);
+        return;
+      }
+      const worksheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, {
+        defval: '',
+        raw: false,
+        header: 1,
+      });
+      if (!rows.length) {
+        setImportError('File kosong.');
+        setIsImporting(false);
+        return;
+      }
+
+      const headerRowIndex = rows.findIndex((row) => (
+        Array.isArray(row) && row.some((cell) => String(cell || '').trim())
+      ));
+      if (headerRowIndex === -1) {
+        setImportError('Header tidak ditemukan.');
+        setIsImporting(false);
+        return;
+      }
+
+      const headerRow = rows[headerRowIndex].map((cell) => String(cell || '').trim());
+      const normalizedHeaders = headerRow.map((cell) => normalizeHeaderKey(cell));
+      const studentNumberIndex = [
+        'studentnumber', 'studentno', 'studentid', 'nis', 'nisn', 'noinduk'
+      ].map(normalizeHeaderKey).map(key => normalizedHeaders.indexOf(key)).find(idx => idx >= 0) ?? -1;
+      const nameIndex = [
+        'fullname', 'name', 'studentname', 'nama', 'namalengkap'
+      ].map(normalizeHeaderKey).map(key => normalizedHeaders.indexOf(key)).find(idx => idx >= 0) ?? -1;
+      const emailIndex = [
+        'email', 'emailaddress'
+      ].map(normalizeHeaderKey).map(key => normalizedHeaders.indexOf(key)).find(idx => idx >= 0) ?? -1;
+      const genderIndex = [
+        'gender', 'sex', 'jk', 'jeniskelamin'
+      ].map(normalizeHeaderKey).map(key => normalizedHeaders.indexOf(key)).find(idx => idx >= 0) ?? -1;
+
+      if (studentNumberIndex === -1 || nameIndex === -1 || emailIndex === -1 || genderIndex === -1) {
+        setImportError('Header tidak sesuai. Pastikan kolom: Student Number, Full Name, Email, Gender.');
+        setIsImporting(false);
+        return;
+      }
+
+      const assessmentTypes = activeClass.assessmentTypes ?? DEFAULT_ASSESSMENTS;
+      const payload = [];
+      let skipped = 0;
+      let duplicates = 0;
+      const existingNumbers = new Set(
+        classStudents
+          .map(student => String(student.studentNumber || '').trim())
+          .filter(Boolean)
+      );
+      const existingEmails = new Set(
+        classStudents
+          .map(student => String(student.email || '').trim().toLowerCase())
+          .filter(Boolean)
+      );
+      const seenNumbers = new Set();
+      const seenEmails = new Set();
+
+      rows.slice(headerRowIndex + 1).forEach((row) => {
+        const safeRow = Array.isArray(row) ? row : [];
+        const studentNumber = String(safeRow[studentNumberIndex] || '').trim();
+        const name = String(safeRow[nameIndex] || '').trim();
+        const email = String(safeRow[emailIndex] || '').trim().toLowerCase();
+        const gender = String(safeRow[genderIndex] || '').trim();
+        const isEmpty = !studentNumber && !name && !email && !gender;
+        if (isEmpty) return;
+
+        if (!studentNumber || !name || !email || !gender) {
+          skipped += 1;
+          return;
+        }
+
+        const isDuplicate = existingNumbers.has(studentNumber)
+          || existingEmails.has(email)
+          || (studentNumber && seenNumbers.has(studentNumber))
+          || (email && seenEmails.has(email));
+        if (isDuplicate) {
+          duplicates += 1;
+          return;
+        }
+
+        if (studentNumber) {
+          seenNumbers.add(studentNumber);
+        }
+        if (email) {
+          seenEmails.add(email);
+        }
+
+        const grades = assessmentTypes.reduce((acc, type) => {
+          acc[type] = 0;
+          return acc;
+        }, {});
+
+        payload.push({
+          class_id: activeClass.id,
+          name,
+          avatar: buildAvatar(name),
+          email,
+          gender,
+          student_number: studentNumber,
+          grades,
+          attitude: 'ME',
+          zero_exclusions: {},
+          zero_exclusion_notes: {},
+        });
+      });
+
+      if (!payload.length) {
+        if (duplicates) {
+          setImportError('Semua data sudah ada di kelas ini.');
+        } else {
+          setImportError('Tidak ada data siswa yang valid.');
+        }
+        setIsImporting(false);
+        return;
+      }
+
+      if (!onImportStudents) {
+        setImportError('Import belum tersedia.');
+        setIsImporting(false);
+        return;
+      }
+
+      const result = await onImportStudents(payload);
+      if (result && result.ok === false) {
+        const rawMessage = result.message || 'Gagal mengimpor data siswa.';
+        const lowered = rawMessage.toLowerCase();
+        if (lowered.includes('row-level security')) {
+          setImportError('RLS memblokir insert. Aktifkan policy insert untuk table students.');
+        } else {
+          setImportError(rawMessage);
+        }
+        setIsImporting(false);
+        return;
+      }
+
+      if (onRefreshStudents) {
+        await onRefreshStudents();
+      }
+
+      const importedCount = result?.count ?? payload.length;
+      const skippedInfo = skipped ? ` (${skipped} baris tidak lengkap)` : '';
+      const duplicateInfo = duplicates ? ` (${duplicates} data duplikat dilewati)` : '';
+      setImportSummary(`Berhasil import ${importedCount} siswa${skippedInfo}${duplicateInfo}.`);
+      setIsImporting(false);
+    } catch (error) {
+      setImportError('Gagal membaca file.');
+      setIsImporting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full animate-slide-in">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold text-white">Students: {activeClass.name}</h2>
-        <button onClick={openAdd} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-colors shadow-lg shadow-blue-500/20">
-          <Plus size={16} /> Add Student
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={openBulkDelete}
+            disabled={!selectedCount}
+            className="bg-red-500/20 hover:bg-red-500/30 text-red-200 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-colors border border-red-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Trash2 size={14} /> Delete Selected {selectedCount ? `(${selectedCount})` : ''}
+          </button>
+          <button
+            onClick={handleDownloadTemplate}
+            className="bg-white/10 hover:bg-white/15 text-gray-200 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-colors border border-white/10"
+          >
+            <Download size={14} /> Template XLSX
+          </button>
+          <button
+            onClick={triggerImportPicker}
+            className="bg-white/10 hover:bg-white/15 text-gray-200 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-colors border border-white/10"
+          >
+            <FileUp size={14} /> Import XLSX
+          </button>
+          <button onClick={openAdd} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-colors shadow-lg shadow-blue-500/20">
+            <Plus size={16} /> Add Student
+          </button>
+        </div>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          className="hidden"
+          onChange={handleImportFileChange}
+        />
       </div>
 
       <div className="macos-glass-panel rounded-xl overflow-hidden flex-1 min-h-0">
@@ -1548,17 +2341,95 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
           <table className="w-full table-fixed text-left">
             <thead className="sticky top-0 bg-[#1e1e1e] border-b border-white/10 z-10">
               <tr className="text-gray-400 text-xs uppercase font-medium">
-                <th className="p-3 pl-4 sm:p-4 sm:pl-6">Student No.</th>
-                <th className="p-3 sm:p-4">Full Name</th>
-                <th className="p-3 sm:p-4">Email</th>
-                <th className="p-3 sm:p-4 hidden sm:table-cell">Gender</th>
+                <th className="p-3 pl-4 sm:p-4 sm:pl-6 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={() => {
+                      if (allSelected) {
+                        setSelectedIds(new Set());
+                        return;
+                      }
+                      setSelectedIds(new Set(filteredStudents.map(student => student.id)));
+                    }}
+                    className="h-4 w-4 rounded border border-white/30 bg-black/30 text-blue-500 focus:ring-blue-500/40"
+                    aria-label="Select all students"
+                  />
+                </th>
+                <th className="p-3 sm:p-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('studentNumber')}
+                    className="flex items-center gap-1 text-gray-400 hover:text-white transition-colors"
+                  >
+                    Student No.
+                    {sortKey === 'studentNumber' && (
+                      <span className="text-[10px] text-gray-500">{sortDir === 'asc' ? 'ASC' : 'DESC'}</span>
+                    )}
+                  </button>
+                </th>
+                <th className="p-3 sm:p-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('name')}
+                    className="flex items-center gap-1 text-gray-400 hover:text-white transition-colors"
+                  >
+                    Full Name
+                    {sortKey === 'name' && (
+                      <span className="text-[10px] text-gray-500">{sortDir === 'asc' ? 'ASC' : 'DESC'}</span>
+                    )}
+                  </button>
+                </th>
+                <th className="p-3 sm:p-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('email')}
+                    className="flex items-center gap-1 text-gray-400 hover:text-white transition-colors"
+                  >
+                    Email
+                    {sortKey === 'email' && (
+                      <span className="text-[10px] text-gray-500">{sortDir === 'asc' ? 'ASC' : 'DESC'}</span>
+                    )}
+                  </button>
+                </th>
+                <th className="p-3 sm:p-4 hidden sm:table-cell">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('gender')}
+                    className="flex items-center gap-1 text-gray-400 hover:text-white transition-colors"
+                  >
+                    Gender
+                    {sortKey === 'gender' && (
+                      <span className="text-[10px] text-gray-500">{sortDir === 'asc' ? 'ASC' : 'DESC'}</span>
+                    )}
+                  </button>
+                </th>
                 <th className="p-3 sm:p-4 text-right pr-4 sm:pr-6">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {classStudents.map((student) => (
+              {filteredStudents.map((student) => (
                 <tr key={student.id} className="hover:bg-white/5 group">
-                  <td className="p-3 pl-4 sm:p-4 sm:pl-6 text-gray-500 text-sm">{student.studentNumber || '-'}</td>
+                  <td className="p-3 pl-4 sm:p-4 sm:pl-6">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(student.id)}
+                      onChange={() => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(student.id)) {
+                            next.delete(student.id);
+                          } else {
+                            next.add(student.id);
+                          }
+                          return next;
+                        });
+                      }}
+                      className="h-4 w-4 rounded border border-white/30 bg-black/30 text-blue-500 focus:ring-blue-500/40"
+                      aria-label={`Select ${student.name}`}
+                    />
+                  </td>
+                  <td className="p-3 sm:p-4 text-gray-500 text-sm">{student.studentNumber || '-'}</td>
                   <td className="p-3 sm:p-4 text-gray-200 text-sm font-medium break-words">{student.name}</td>
                   <td className="p-3 sm:p-4 text-gray-300 text-sm break-all">{student.email || '-'}</td>
                   <td className="p-3 sm:p-4 text-gray-300 text-sm hidden sm:table-cell">{student.gender || '-'}</td>
@@ -1574,9 +2445,14 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
               ))}
                {classStudents.length === 0 && (
                   <tr>
-                    <td colSpan="5" className="p-8 text-center text-gray-500 text-sm">No student data.</td>
+                    <td colSpan="6" className="p-8 text-center text-gray-500 text-sm">No student data.</td>
                   </tr>
                 )}
+               {classStudents.length > 0 && filteredStudents.length === 0 && (
+                 <tr>
+                   <td colSpan="6" className="p-8 text-center text-gray-500 text-sm">No matching students.</td>
+                 </tr>
+               )}
             </tbody>
           </table>
         </div>
@@ -1717,6 +2593,69 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
           </div>
         </div>
       </Modal>
+
+      <Modal
+        isOpen={isBulkDeleteOpen}
+        onClose={() => {
+          if (bulkDeleteSaving) return;
+          setIsBulkDeleteOpen(false);
+          setBulkDeletePassword('');
+          setBulkDeleteError('');
+        }}
+        title="Delete Selected Students"
+      >
+        <div className="space-y-4">
+          <div className="macos-glass-panel rounded-lg border border-white/10 p-4 text-sm text-gray-200">
+            <p className="font-semibold text-white">This action will permanently delete selected student data.</p>
+            <p className="text-xs text-gray-400 mt-2">
+              Selected: <span className="text-gray-200">{selectedCount}</span> students
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Confirm password</label>
+            <input
+              type="password"
+              value={bulkDeletePassword}
+              onChange={(e) => setBulkDeletePassword(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none transition-all"
+              placeholder="Enter your password"
+            />
+          </div>
+
+          {bulkDeleteError && <p className="text-xs text-red-400">{bulkDeleteError}</p>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (bulkDeleteSaving) return;
+                setIsBulkDeleteOpen(false);
+                setBulkDeletePassword('');
+                setBulkDeleteError('');
+              }}
+              className="px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkDeleteConfirm}
+              disabled={bulkDeleteSaving}
+              className="px-3 py-2 rounded-lg text-sm bg-red-500/80 text-white hover:bg-red-500 font-medium shadow-lg shadow-red-500/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+            >
+              {bulkDeleteSaving ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
@@ -1801,7 +2740,7 @@ const ScheduleDateInput = ({ label, value, onChange, minDate }) => {
 };
 
 // --- SCHEDULE VIEW COMPONENT ---
-const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDeleteSchedule }) => {
+const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDeleteSchedule, searchQuery }) => {
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
     const today = new Date();
     const dayOfWeek = today.getDay();
@@ -1839,7 +2778,24 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
   );
   const today = new Date();
   const todayStr = today.toLocaleDateString('en-US', { weekday: 'long' });
-  const classById = useMemo(() => new Map(classes.map(cls => [cls.id, cls])), [classes]);
+  const classById = useMemo(() => new Map((classes || []).map(cls => [cls.id, cls])), [classes]);
+  const normalizedQuery = useMemo(() => normalizeSearchValue(searchQuery), [searchQuery]);
+  const filteredSchedules = useMemo(() => {
+    const safeSchedules = Array.isArray(schedules) ? schedules : [];
+    const normalizedList = safeSchedules.filter(schedule => schedule && typeof schedule === 'object');
+    if (!normalizedQuery) return normalizedList;
+    return normalizedList.filter((schedule) => {
+      const classInfo = classById.get(schedule.classId);
+      const haystack = [
+        schedule.day,
+        schedule.subject,
+        schedule.room,
+        classInfo?.name,
+        classInfo?.subtitle,
+      ].map(normalizeSearchValue);
+      return haystack.some(value => value.includes(normalizedQuery));
+    });
+  }, [schedules, classById, normalizedQuery]);
 
   const navigateWeek = (direction) => {
     const newStart = new Date(currentWeekStart);
@@ -1858,9 +2814,15 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
   };
 
   const getTimePosition = (time) => {
+    if (!time || typeof time !== 'string' || !time.includes(':')) {
+      return 0;
+    }
     const [hours, minutes] = time.split(':').map(Number);
     const [startHour, startMinute] = TIME_SLOTS[0].split(':').map(Number);
     const startMinutes = (startHour * 60) + startMinute;
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+      return 0;
+    }
     const currentMinutes = (hours * 60) + minutes;
     return (currentMinutes - startMinutes) / 30;
   };
@@ -1993,7 +2955,8 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
               {/* Day Columns */}
               {DAYS_OF_WEEK.map((day) => {
                 const dayDateKey = weekDateByDay[day];
-                const daySchedules = schedules.filter((schedule) => {
+                const daySchedules = filteredSchedules.filter((schedule) => {
+                  if (!schedule || typeof schedule !== 'object') return false;
                   if (schedule.day !== day) return false;
                   if (schedule.repeatWeekly) return true;
                   return schedule.date && schedule.date === dayDateKey;
@@ -2007,6 +2970,9 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
                     
                     {/* Schedule Items */}
                     {daySchedules.map((schedule) => {
+                      if (!schedule.startTime || !schedule.endTime) {
+                        return null;
+                      }
                       const top = getTimePosition(schedule.startTime) * rowHeight;
                       const height = getScheduleHeight(schedule.startTime, schedule.endTime);
                       const color = SCHEDULE_COLORS[schedule.colorIndex % SCHEDULE_COLORS.length];
@@ -2124,12 +3090,13 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
           </div>
         </form>
       </Modal>
+
     </div>
   );
 };
 
 // --- GRADES VIEW COMPONENT ---
-const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentTypes }) => {
+const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentTypes, searchQuery, onImportGrades }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [gradeForm, setGradeForm] = useState({});
@@ -2151,9 +3118,33 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
   const [zeroNoteSaving, setZeroNoteSaving] = useState(false);
   const [hoverNote, setHoverNote] = useState(null);
   const hoverTimerRef = useRef(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importError, setImportError] = useState('');
+  const [importSummary, setImportSummary] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef(null);
 
   const classStudents = students.filter(s => isSameClassId(s.classId, activeClass.id));
   const assessmentTypes = activeClass?.assessmentTypes ?? DEFAULT_ASSESSMENTS;
+  const normalizedQuery = useMemo(() => normalizeSearchValue(searchQuery), [searchQuery]);
+  const filteredStudents = useMemo(() => {
+    if (!normalizedQuery) return classStudents;
+    return classStudents.filter((student) => {
+      const haystack = [
+        student.name,
+        student.studentNumber,
+        student.email,
+        student.gender,
+      ].map(normalizeSearchValue);
+      return haystack.some(value => value.includes(normalizedQuery));
+    });
+  }, [classStudents, normalizedQuery]);
+  const sortedStudents = useMemo(() => {
+    const list = [...filteredStudents];
+    list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
+    return list;
+  }, [filteredStudents]);
 
   const calculateAverage = (grades, zeroExclusions = {}) => (
     calculateGradesAverage(grades, assessmentTypes, zeroExclusions)
@@ -2166,18 +3157,265 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
     }
   }, []);
 
+  const resetImportState = () => {
+    setImportError('');
+    setImportSummary('');
+    setImportFile(null);
+    if (importInputRef.current) {
+      importInputRef.current.value = '';
+    }
+  };
+
+  const openImport = () => {
+    resetImportState();
+    setIsImportOpen(true);
+  };
+
+  const closeImport = () => {
+    if (isImporting) return;
+    setIsImportOpen(false);
+    resetImportState();
+  };
+
+  const triggerImportPicker = () => {
+    resetImportState();
+    if (importInputRef.current) {
+      importInputRef.current.click();
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    const headers = ['Full Name', 'Attitude'];
+    const worksheet = XLSX.utils.aoa_to_sheet([headers]);
+    worksheet['!cols'] = headers.map((header) => ({ wch: Math.max(14, header.length + 2) }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Grades');
+    XLSX.writeFile(workbook, 'grades_import_template.xlsx', { compression: true });
+  };
+
+  const parseAttitudeValue = (value) => {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) return '';
+    if (ATTITUDE_OPTIONS.includes(normalized)) return normalized;
+    if (normalized === '3') return 'EE';
+    if (normalized === '2') return 'ME';
+    if (normalized === '1') return 'DME';
+    if (normalized.startsWith('E')) return 'EE';
+    if (normalized.startsWith('M')) return 'ME';
+    if (normalized.startsWith('D')) return 'DME';
+    return '';
+  };
+
+  const handleImportFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImportFile(file);
+    setImportError('');
+    setImportSummary('');
+    setIsImportOpen(true);
+    handleImportSubmit(file);
+  };
+
+  const handleImportSubmit = async (fileOverride) => {
+    if (!activeClass?.id) {
+      setImportError('Class not found.');
+      return;
+    }
+    const fileToImport = fileOverride || importFile;
+    if (!fileToImport) {
+      setImportError('Pilih file .xlsx terlebih dahulu.');
+      return;
+    }
+    if (!onImportGrades) {
+      setImportError('Import belum tersedia.');
+      return;
+    }
+    if (isImporting) return;
+
+    setIsImporting(true);
+    setImportError('');
+    setImportSummary('');
+
+    try {
+      const buffer = await fileToImport.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        setImportError('File tidak valid.');
+        setIsImporting(false);
+        return;
+      }
+      const worksheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, {
+        defval: '',
+        raw: false,
+        header: 1,
+      });
+      if (!rows.length) {
+        setImportError('File kosong.');
+        setIsImporting(false);
+        return;
+      }
+
+      const headerRowIndex = rows.findIndex((row) => (
+        Array.isArray(row) && row.some((cell) => String(cell || '').trim())
+      ));
+      if (headerRowIndex === -1) {
+        setImportError('Header tidak ditemukan.');
+        setIsImporting(false);
+        return;
+      }
+
+      const headerRow = rows[headerRowIndex].map((cell) => String(cell || '').trim());
+      const normalizedHeaders = headerRow.map((cell) => normalizeHeaderKey(cell));
+      const findIndex = (candidates) => (
+        candidates.map(normalizeHeaderKey).map(key => normalizedHeaders.indexOf(key)).find(idx => idx >= 0) ?? -1
+      );
+      const studentNumberIndex = findIndex(['studentnumber', 'studentno', 'studentid', 'nis', 'nisn', 'noinduk']);
+      const nameIndex = findIndex(['fullname', 'name', 'studentname', 'nama', 'namalengkap']);
+      const attitudeIndex = findIndex(['attitude', 'sikap', 'attitudevalue']);
+
+      if (nameIndex === -1 || attitudeIndex === -1) {
+        setImportError('Header wajib: Full Name dan Attitude.');
+        setIsImporting(false);
+        return;
+      }
+
+      const assessmentColumns = headerRow
+        .map((header, index) => ({ header: String(header || '').trim(), index }))
+        .filter(({ header, index }) => {
+          if (!header) return false;
+          if (index === nameIndex || index === attitudeIndex) return false;
+          if (studentNumberIndex !== -1 && index === studentNumberIndex) return false;
+          return true;
+        })
+        .map(({ header, index }) => ({ header, index }));
+
+      const assessmentSet = new Set();
+      const assessmentList = [];
+      assessmentColumns.forEach(({ header }) => {
+        const trimmed = String(header || '').trim();
+        const key = normalizeSearchValue(trimmed);
+        if (!trimmed || assessmentSet.has(key)) return;
+        assessmentSet.add(key);
+        assessmentList.push(trimmed);
+      });
+
+      let effectiveTypes = assessmentTypes;
+      if (assessmentList.length > 0) {
+        const result = await onUpdateAssessmentTypes?.(activeClass.id, assessmentList);
+        if (result && result.ok === false) {
+          setImportError(result.message || 'Gagal memperbarui jenis penilaian.');
+          setIsImporting(false);
+          return;
+        }
+        effectiveTypes = assessmentList;
+      }
+
+      const byNumber = new Map(
+        classStudents
+          .filter(student => student.studentNumber)
+          .map(student => [String(student.studentNumber).trim(), student])
+      );
+      const byName = new Map(
+        classStudents
+          .filter(student => student.name)
+          .map(student => [normalizeSearchValue(student.name), student])
+      );
+
+      const updates = [];
+      let skipped = 0;
+      let notFound = 0;
+
+      rows.slice(headerRowIndex + 1).forEach((row) => {
+        const safeRow = Array.isArray(row) ? row : [];
+        const studentNumber = studentNumberIndex >= 0 ? String(safeRow[studentNumberIndex] || '').trim() : '';
+        const name = String(safeRow[nameIndex] || '').trim();
+        const attitudeRaw = safeRow[attitudeIndex];
+        const isEmpty = !studentNumber && !name;
+        if (isEmpty) return;
+
+        const student = studentNumber
+          ? byNumber.get(studentNumber)
+          : byName.get(normalizeSearchValue(name));
+        if (!student) {
+          notFound += 1;
+          return;
+        }
+
+        const nextGrades = {};
+        effectiveTypes.forEach((type) => {
+          nextGrades[type] = safeNumber(student.grades?.[type]);
+        });
+
+        assessmentColumns.forEach(({ header, index }) => {
+          const type = String(header || '').trim();
+          if (!type) return;
+          const rawValue = safeRow[index];
+          if (rawValue === '' || rawValue === null || rawValue === undefined) {
+            return;
+          }
+          const score = Number(rawValue);
+          if (!Number.isFinite(score)) {
+            return;
+          }
+          nextGrades[type] = Math.max(0, Math.min(100, score));
+        });
+
+        const nextAttitude = parseAttitudeValue(attitudeRaw) || student.attitude || 'ME';
+        updates.push({
+          id: student.id,
+          grades: nextGrades,
+          attitude: nextAttitude,
+          zeroExclusions: normalizeZeroExclusions(student.zeroExclusions),
+          zeroExclusionNotes: normalizeZeroExclusionNotes(student.zeroExclusionNotes),
+        });
+      });
+
+      if (!updates.length) {
+        setImportError('Tidak ada data nilai yang valid.');
+        setIsImporting(false);
+        return;
+      }
+
+      const result = await onImportGrades(updates);
+      if (result && result.ok === false) {
+        setImportError(result.message || 'Gagal mengimpor nilai.');
+        setIsImporting(false);
+        return;
+      }
+
+      const skippedInfo = skipped ? ` (${skipped} incomplete rows)` : '';
+      const notFoundInfo = notFound ? ` (${notFound} students not found)` : '';
+      setImportSummary(`Successfully imported grades for ${updates.length} students${skippedInfo}${notFoundInfo}.`);
+      setIsImporting(false);
+    } catch (error) {
+      setImportError('Gagal membaca file.');
+      setIsImporting(false);
+    }
+  };
+
   const getGradeColor = (avg) => {
-    if (avg >= 85) return 'text-green-400';
-    if (avg >= 70) return 'text-blue-400';
-    if (avg >= 55) return 'text-yellow-400';
+    if (avg >= 90) return 'text-green-400';
+    if (avg >= 75) return 'text-blue-400';
+    if (avg >= 60) return 'text-yellow-400';
+    if (avg >= 45) return 'text-orange-400';
     return 'text-red-400';
   };
 
   const getGradeBadge = (avg) => {
-    if (avg >= 85) return { label: 'A', bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' };
-    if (avg >= 70) return { label: 'B', bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' };
-    if (avg >= 55) return { label: 'C', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' };
-    return { label: 'D', bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' };
+    if (avg >= 95) return { label: 'A', bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' };
+    if (avg >= 90) return { label: 'A-', bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' };
+    if (avg >= 85) return { label: 'B+', bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' };
+    if (avg >= 80) return { label: 'B', bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' };
+    if (avg >= 75) return { label: 'B-', bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' };
+    if (avg >= 70) return { label: 'C+', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' };
+    if (avg >= 65) return { label: 'C', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' };
+    if (avg >= 60) return { label: 'C-', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' };
+    if (avg >= 55) return { label: 'D+', bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30' };
+    if (avg >= 50) return { label: 'D', bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30' };
+    if (avg >= 45) return { label: 'D-', bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30' };
+    return { label: 'F', bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' };
   };
 
   const getAttitudeBadge = (value) => {
@@ -2399,7 +3637,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
       <div className="px-4 py-3 border-b border-white/10 bg-white/5 flex justify-between items-center shrink-0">
         <span className="text-xs font-semibold text-gray-400 uppercase">Grades: {activeClass.name}</span>
         <div className="flex items-center gap-2 text-xs text-gray-400">
-          <span>{classStudents.length} Students</span>
+          <span>{sortedStudents.length} Students</span>
           <button
             type="button"
             onClick={() => setIsGradesExpanded(!isExpanded)}
@@ -2428,7 +3666,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {classStudents.map((student) => {
+            {sortedStudents.map((student) => {
               const avgInfo = getGradesAverageInfo(student.grades, assessmentTypes, student.zeroExclusions);
               const avg = avgInfo.avg;
               const hasScores = avgInfo.hasScores;
@@ -2525,6 +3763,13 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
                 </td>
               </tr>
             )}
+            {classStudents.length > 0 && filteredStudents.length === 0 && (
+              <tr>
+                <td colSpan={assessmentTypes.length + 5} className="p-8 text-center text-gray-500 text-sm">
+                  No matching students.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -2567,6 +3812,52 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
 
   return (
     <div className="flex flex-col h-full animate-slide-in">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Grades: {activeClass.name}</h2>
+          <p className="text-xs text-gray-400">Import scores with XLSX and adjust assessments from the header row.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleDownloadTemplate}
+            className="bg-white/10 hover:bg-white/15 text-gray-200 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-colors border border-white/10"
+          >
+            <Download size={14} /> Template XLSX
+          </button>
+          <button
+            onClick={triggerImportPicker}
+            disabled={isImporting}
+            className="bg-white/10 hover:bg-white/15 text-gray-200 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-colors border border-white/10 disabled:opacity-60"
+          >
+            {isImporting ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Importing...
+              </>
+            ) : (
+              <>
+                <FileUp size={14} /> Import XLSX
+              </>
+            )}
+          </button>
+        </div>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          className="hidden"
+          onChange={handleImportFileChange}
+        />
+      </div>
+      {(importError || importSummary) && (
+        <div className="mb-4 text-xs">
+          {importError ? (
+            <span className="text-red-400">{importError}</span>
+          ) : (
+            <span className="text-emerald-300">{importSummary}</span>
+          )}
+        </div>
+      )}
       {/* Stats Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <div className="macos-glass-panel rounded-xl p-3">
@@ -2703,11 +3994,19 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
           {/* Grade Scale Reference */}
           <div className="bg-white/5 rounded-lg p-3 border border-white/10">
             <p className="text-[10px] text-gray-400 uppercase font-medium mb-2">Grade Scale</p>
-            <div className="flex justify-between text-xs">
-              <span className="text-green-400">A: 85-100</span>
-              <span className="text-blue-400">B: 70-84</span>
-              <span className="text-yellow-400">C: 55-69</span>
-              <span className="text-red-400">D: 0-54</span>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="text-green-400">A: 95-100</span>
+              <span className="text-green-400">A-: 90-94</span>
+              <span className="text-blue-400">B+: 85-89</span>
+              <span className="text-blue-400">B: 80-84</span>
+              <span className="text-blue-400">B-: 75-79</span>
+              <span className="text-yellow-400">C+: 70-74</span>
+              <span className="text-yellow-400">C: 65-69</span>
+              <span className="text-yellow-400">C-: 60-64</span>
+              <span className="text-orange-400">D+: 55-59</span>
+              <span className="text-orange-400">D: 50-54</span>
+              <span className="text-orange-400">D-: 45-49</span>
+              <span className="text-red-400">F: 0-44</span>
             </div>
           </div>
 
@@ -3105,8 +4404,103 @@ const MainDashboard = ({ onLogout }) => {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataError, setDataError] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [attendanceDate, setAttendanceDate] = useState(() => getTodayKey());
+  const [attendanceRecords, setAttendanceRecords] = useState({});
+  const [todayAttendanceRecords, setTodayAttendanceRecords] = useState({});
+  const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [notifications, setNotifications] = useState([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const notificationsButtonRef = useRef(null);
+  const notificationsPopoverRef = useRef(null);
+  const [notificationsAnchor, setNotificationsAnchor] = useState(null);
+  const [lastReadAt, setLastReadAt] = useState(null);
 
   const activeClass = classes.find(c => c.id === activeClassId) || classes[0] || null;
+
+  const loadNotifications = () => {
+    if (typeof window === 'undefined') return [];
+    const todayKey = getTodayKey();
+    const storedDate = window.localStorage.getItem(NOTIFICATION_DATE_KEY);
+    if (storedDate !== todayKey) {
+      const now = new Date();
+      window.localStorage.setItem(NOTIFICATION_DATE_KEY, todayKey);
+      window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify([]));
+      window.localStorage.setItem(NOTIFICATION_READ_KEY, now.toISOString());
+      return [];
+    }
+    try {
+      const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const persistNotifications = (items) => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(NOTIFICATION_DATE_KEY, getTodayKey());
+    window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(items));
+  };
+
+  const loadLastReadAt = () => {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(NOTIFICATION_READ_KEY);
+    if (!raw) return null;
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const persistLastReadAt = (value) => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(NOTIFICATION_READ_KEY, value.toISOString());
+  };
+
+  const markNotificationsRead = () => {
+    const now = new Date();
+    setLastReadAt(now);
+    persistLastReadAt(now);
+  };
+
+  const addNotification = (message, type = 'info') => {
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      message,
+      type,
+      time: new Date().toISOString(),
+    };
+    setNotifications((prev) => {
+      const next = [entry, ...prev].slice(0, MAX_NOTIFICATIONS);
+      persistNotifications(next);
+      return next;
+    });
+  };
+
+  const clearNotifications = () => {
+    setNotifications([]);
+    persistNotifications([]);
+    markNotificationsRead();
+  };
+
+  const refreshStudents = async () => {
+    if (!supabase) {
+      setDataError('Supabase is not configured.');
+      return;
+    }
+    const { data, error } = await supabase
+      .from('students')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      setDataError('Failed to refresh students.');
+      return;
+    }
+
+    setStudents((data || []).map(mapStudentRow));
+  };
 
   const handleUpdateProfile = async (updatedProfile, avatarFile) => {
     if (!supabase) {
@@ -3250,26 +4644,229 @@ const MainDashboard = ({ onLogout }) => {
     };
   }, []);
 
-  const updateStudentStatus = async (id, newStatus) => {
+  useEffect(() => {
+    setNotifications(loadNotifications());
+    setLastReadAt(loadLastReadAt());
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const interval = setInterval(() => {
+      const todayKey = getTodayKey();
+      const storedDate = window.localStorage.getItem(NOTIFICATION_DATE_KEY);
+      if (storedDate !== todayKey) {
+        const now = new Date();
+        window.localStorage.setItem(NOTIFICATION_DATE_KEY, todayKey);
+        window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify([]));
+        window.localStorage.setItem(NOTIFICATION_READ_KEY, now.toISOString());
+        setNotifications([]);
+        setLastReadAt(now);
+      }
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const handleClick = (event) => {
+      const buttonEl = notificationsButtonRef.current;
+      const popoverEl = notificationsPopoverRef.current;
+      if (buttonEl?.contains(event.target)) return;
+      if (popoverEl?.contains(event.target)) return;
+      setIsNotificationsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  useEffect(() => {
+    if (!isNotificationsOpen) return;
+    const updateAnchor = () => {
+      if (!notificationsButtonRef.current) return;
+      const rect = notificationsButtonRef.current.getBoundingClientRect();
+      const right = Math.max(12, window.innerWidth - rect.right);
+      const top = rect.bottom + 8;
+      setNotificationsAnchor({ top, right });
+    };
+    updateAnchor();
+    window.addEventListener('resize', updateAnchor);
+    window.addEventListener('scroll', updateAnchor, true);
+    return () => {
+      window.removeEventListener('resize', updateAnchor);
+      window.removeEventListener('scroll', updateAnchor, true);
+    };
+  }, [isNotificationsOpen]);
+
+  const unreadCount = useMemo(() => {
+    if (!notifications.length) return 0;
+    if (!lastReadAt) return notifications.length;
+    const lastReadTime = lastReadAt.getTime();
+    if (Number.isNaN(lastReadTime)) return notifications.length;
+    return notifications.filter((item) => {
+      const time = new Date(item.time).getTime();
+      if (Number.isNaN(time)) return false;
+      return time > lastReadTime;
+    }).length;
+  }, [notifications, lastReadAt]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadAttendanceHistory = async () => {
+      if (!supabase || !attendanceDate || !activeClassId) {
+        if (isMounted) {
+          setAttendanceRecords({});
+          setIsAttendanceLoading(false);
+        }
+        return;
+      }
+
+      setIsAttendanceLoading(true);
+      setDataError('');
+
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .select('student_id,status,attendance_time')
+        .eq('class_id', activeClassId)
+        .eq('attendance_date', attendanceDate);
+
+      if (!isMounted) return;
+
+      if (error) {
+        setDataError('Failed to load attendance history.');
+        setAttendanceRecords({});
+        setIsAttendanceLoading(false);
+        return;
+      }
+
+      setAttendanceRecords(buildAttendanceRecordMap(data || []));
+      setIsAttendanceLoading(false);
+    };
+
+    loadAttendanceHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [attendanceDate, activeClassId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadTodayAttendance = async () => {
+      if (!supabase || !activeClassId) {
+        if (isMounted) {
+          setTodayAttendanceRecords({});
+        }
+        return;
+      }
+
+      const todayKey = getTodayKey();
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .select('student_id,status,attendance_time')
+        .eq('class_id', activeClassId)
+        .eq('attendance_date', todayKey);
+
+      if (!isMounted) return;
+
+      if (error) {
+        setDataError('Failed to load attendance history.');
+        setTodayAttendanceRecords({});
+        return;
+      }
+
+      setTodayAttendanceRecords(buildAttendanceRecordMap(data || []));
+    };
+
+    loadTodayAttendance();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeClassId]);
+
+  const updateStudentStatus = async (id, newStatus, dateKey = attendanceDate) => {
     if (!supabase) {
       setDataError('Supabase is not configured.');
       return;
     }
 
-    const shouldStamp = newStatus === 'Present' || newStatus === 'Late';
-    const attendanceTime = shouldStamp ? getNowIso() : null;
-
-    const { error } = await supabase
-      .from('students')
-      .update({ status: newStatus, attendance_time: attendanceTime })
-      .eq('id', id);
-
-    if (error) {
-      setDataError('Failed to save attendance.');
+    const student = students.find(item => item.id === id);
+    const classId = student?.classId ?? activeClassId;
+    if (!classId) {
+      setDataError('Class not found.');
       return;
     }
 
-    setStudents(prev => prev.map(s => s.id === id ? { ...s, status: newStatus, attendanceTime } : s));
+    const targetDate = dateKey || getTodayKey();
+    const shouldStamp = newStatus === 'Present' || newStatus === 'Late';
+    const attendanceTime = shouldStamp ? getNowIso() : null;
+
+    const { error: historyError } = await supabase
+      .from('attendance_records')
+      .upsert({
+        student_id: id,
+        class_id: classId,
+        attendance_date: targetDate,
+        status: newStatus,
+        attendance_time: attendanceTime,
+      }, { onConflict: 'student_id,class_id,attendance_date' });
+
+    if (historyError) {
+      setDataError('Failed to save attendance history.');
+      return;
+    }
+
+    if (targetDate === attendanceDate) {
+      setAttendanceRecords(prev => ({
+        ...prev,
+        [String(id)]: { status: newStatus, attendanceTime },
+      }));
+    }
+
+    if (targetDate === getTodayKey()) {
+      setTodayAttendanceRecords(prev => ({
+        ...prev,
+        [String(id)]: { status: newStatus, attendanceTime },
+      }));
+    }
+
+    const studentName = student?.name || 'Student';
+    addNotification(`Attendance ${targetDate}: ${studentName} - ${newStatus}`, 'attendance');
+  };
+
+  const insertStudentsBatch = async (rows) => {
+    const attempt = await supabase
+      .from('students')
+      .insert(rows)
+      .select();
+
+    if (!attempt.error) {
+      return { data: attempt.data || [] };
+    }
+
+    const message = String(attempt.error.message || '').toLowerCase();
+    const needsStatus = message.includes('status') || message.includes('attendance_time') || message.includes('null value');
+    if (!needsStatus) {
+      return { error: attempt.error };
+    }
+
+    const fallbackRows = rows.map(row => ({
+      status: row.status ?? 'Present',
+      attendance_time: row.attendance_time ?? null,
+      ...row,
+    }));
+
+    const retry = await supabase
+      .from('students')
+      .insert(fallbackRows)
+      .select();
+
+    if (retry.error) {
+      return { error: retry.error };
+    }
+
+    return { data: retry.data || [] };
   };
 
   const addClass = async (clsData) => {
@@ -3435,25 +5032,18 @@ const MainDashboard = ({ onLogout }) => {
       acc[type] = 0;
       return acc;
     }, {});
-    const attendanceTime = getNowIso();
-    const { data, error } = await supabase
-      .from('students')
-      .insert({
-        class_id: classId,
-        name: trimmedName,
-        avatar,
-        email: trimmedEmail,
-        gender: trimmedGender,
-        student_number: trimmedStudentNumber,
-        status: 'Present',
-        attendance_time: attendanceTime,
-        grades,
-        attitude: 'ME',
-        zero_exclusions: {},
-        zero_exclusion_notes: {},
-      })
-      .select()
-      .single();
+    const { data, error } = await insertStudentsBatch([{
+      class_id: classId,
+      name: trimmedName,
+      avatar,
+      email: trimmedEmail,
+      gender: trimmedGender,
+      student_number: trimmedStudentNumber,
+      grades,
+      attitude: 'ME',
+      zero_exclusions: {},
+      zero_exclusion_notes: {},
+    }]);
 
     if (error) {
       const message = error.message || 'Failed to add student.';
@@ -3461,8 +5051,38 @@ const MainDashboard = ({ onLogout }) => {
       return { ok: false, message };
     }
 
-    setStudents(prev => [...prev, mapStudentRow(data)]);
+    const inserted = Array.isArray(data) ? data[0] : null;
+    if (inserted) {
+      setStudents(prev => [...prev, mapStudentRow(inserted)]);
+      addNotification(`Student added: ${trimmedName}`, 'student');
+    }
     return { ok: true };
+  };
+
+  const importStudents = async (payload) => {
+    if (!supabase) {
+      setDataError('Supabase is not configured.');
+      return { ok: false, message: 'Supabase is not configured.' };
+    }
+    if (!Array.isArray(payload) || payload.length === 0) {
+      return { ok: false, message: 'No data to import.' };
+    }
+
+    const { data, error } = await insertStudentsBatch(payload);
+
+    if (error) {
+      const message = error.message || 'Failed to import students.';
+      setDataError(message);
+      return { ok: false, message };
+    }
+
+    if (data?.length) {
+      setStudents(prev => [...prev, ...data.map(mapStudentRow)]);
+    }
+    if (data?.length) {
+      addNotification(`Imported ${data.length} students to ${activeClass?.name || 'class'}.`, 'student');
+    }
+    return { ok: true, count: data?.length || 0 };
   };
 
   const editStudent = async (id, formData) => {
@@ -3545,7 +5165,56 @@ const MainDashboard = ({ onLogout }) => {
       return { ok: false, message };
     }
 
+    const deletedStudent = students.find(s => s.id === id);
     setStudents(prev => prev.filter(s => s.id !== id));
+    if (deletedStudent) {
+      addNotification(`Student deleted: ${deletedStudent.name}`, 'student');
+    }
+    return { ok: true };
+  };
+
+  const deleteStudentsBatch = async (ids, password) => {
+    if (!supabase) {
+      setDataError('Supabase is not configured.');
+      return { ok: false, message: 'Supabase is not configured.' };
+    }
+    if (!ids || !ids.length) {
+      return { ok: false, message: 'No students selected.' };
+    }
+    if (!password) {
+      return { ok: false, message: 'Password is required.' };
+    }
+
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const email = userData?.user?.email;
+    if (userError || !email) {
+      const message = 'User session not found.';
+      setDataError(message);
+      return { ok: false, message };
+    }
+
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError) {
+      return { ok: false, message: 'Incorrect password.' };
+    }
+
+    const { error } = await supabase
+      .from('students')
+      .delete()
+      .in('id', ids);
+
+    if (error) {
+      const message = error.message || 'Failed to delete students.';
+      setDataError(message);
+      return { ok: false, message };
+    }
+
+    setStudents(prev => prev.filter(s => !ids.includes(s.id)));
+    addNotification(`Deleted ${ids.length} students.`, 'student');
     return { ok: true };
   };
 
@@ -3581,6 +5250,62 @@ const MainDashboard = ({ onLogout }) => {
       zeroExclusions,
       zeroExclusionNotes,
     } : s));
+  };
+
+  const importGrades = async (updates) => {
+    if (!supabase) {
+      const message = 'Supabase is not configured.';
+      setDataError(message);
+      return { ok: false, message };
+    }
+    if (!updates || !updates.length) {
+      return { ok: false, message: 'No grade data to import.' };
+    }
+
+    const normalizedUpdates = updates.map((update) => ({
+      id: update.id,
+      grades: update.grades || {},
+      attitude: update.attitude || 'ME',
+      zeroExclusions: normalizeZeroExclusions(update.zeroExclusions),
+      zeroExclusionNotes: normalizeZeroExclusionNotes(update.zeroExclusionNotes),
+    }));
+
+    const results = await Promise.all(
+      normalizedUpdates.map((update) => (
+        supabase
+          .from('students')
+          .update({
+            grades: update.grades,
+            attitude: update.attitude,
+            zero_exclusions: update.zeroExclusions,
+            zero_exclusion_notes: update.zeroExclusionNotes,
+          })
+          .eq('id', update.id)
+      ))
+    );
+
+    const failed = results.find(result => result.error);
+    if (failed?.error) {
+      const message = failed.error.message || 'Failed to import grades.';
+      setDataError(message);
+      return { ok: false, message };
+    }
+
+    const updatesMap = new Map(normalizedUpdates.map(update => [update.id, update]));
+    setStudents(prev => prev.map(student => {
+      const updated = updatesMap.get(student.id);
+      if (!updated) return student;
+      return {
+        ...student,
+        grades: updated.grades,
+        attitude: updated.attitude,
+        zeroExclusions: updated.zeroExclusions,
+        zeroExclusionNotes: updated.zeroExclusionNotes,
+      };
+    }));
+
+    addNotification(`Grades imported for ${normalizedUpdates.length} students.`, 'grade');
+    return { ok: true, count: normalizedUpdates.length };
   };
 
   // Schedule state
@@ -3629,6 +5354,7 @@ const MainDashboard = ({ onLogout }) => {
         subject: schedule.subject || classInfo.subtitle || '',
       },
     ]);
+    addNotification(`Schedule added: ${classInfo.name} ${data.day} ${data.startTime}-${data.endTime}`, 'schedule');
   };
 
   const editSchedule = async (data) => {
@@ -3676,6 +5402,7 @@ const MainDashboard = ({ onLogout }) => {
         }
         : item
     )));
+    addNotification(`Schedule updated: ${classInfo.name} ${data.day} ${data.startTime}-${data.endTime}`, 'schedule');
   };
 
   const deleteSchedule = async (id) => {
@@ -3694,7 +5421,11 @@ const MainDashboard = ({ onLogout }) => {
       return;
     }
 
+    const removed = schedules.find(schedule => schedule.id === id);
     setSchedules(prev => prev.filter(s => s.id !== id));
+    if (removed) {
+      addNotification(`Schedule deleted: ${removed.className || 'Class'} ${removed.day} ${removed.startTime}-${removed.endTime}`, 'schedule');
+    }
   };
 
   const navItems = [
@@ -3704,6 +5435,42 @@ const MainDashboard = ({ onLogout }) => {
     { id: 'students', icon: Student, label: 'Students' }, 
     { id: 'grades', icon: PhBookOpen, label: 'Grades' },
   ];
+
+  const notificationsPopover = isNotificationsOpen && typeof document !== 'undefined'
+    ? createPortal(
+      <div
+        ref={notificationsPopoverRef}
+        className="fixed z-[999] w-72 max-w-[80vw] macos-glass-panel rounded-xl border border-white/10 shadow-2xl overflow-hidden"
+        style={{
+          top: notificationsAnchor?.top ?? 64,
+          right: notificationsAnchor?.right ?? 16,
+        }}
+      >
+        <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between bg-white/5">
+          <span className="text-xs font-semibold text-gray-200">Notifications</span>
+          <button
+            type="button"
+            onClick={clearNotifications}
+            className="text-[10px] text-gray-400 hover:text-white"
+          >
+            Clear
+          </button>
+        </div>
+        <div className="max-h-72 overflow-auto">
+          {notifications.length === 0 && (
+            <div className="px-3 py-4 text-xs text-gray-400">No notifications today.</div>
+          )}
+          {notifications.map((item) => (
+            <div key={item.id} className="px-3 py-2 border-b border-white/5 last:border-b-0">
+              <p className="text-xs text-gray-200">{item.message}</p>
+              <span className="text-[10px] text-gray-500">{formatNotificationTime(item.time)}</span>
+            </div>
+          ))}
+        </div>
+      </div>,
+      document.body
+    )
+    : null;
 
   return (
     <div className="w-full max-w-6xl h-[92dvh] md:h-[90vh] rounded-2xl shadow-2xl flex overflow-hidden border border-white/20 relative animate-in zoom-in-95 duration-300 z-10 backdrop-blur-sm">
@@ -3834,13 +5601,35 @@ const MainDashboard = ({ onLogout }) => {
                 <input 
                   type="text" 
                   placeholder="Search..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   className="bg-black/20 border border-transparent focus:border-blue-500/50 hover:bg-black/30 text-white text-xs rounded-md pl-9 pr-3 py-1.5 w-32 sm:w-40 md:w-48 transition-all outline-none"
                 />
               </div>
-              <button className="p-1.5 rounded-md text-gray-400 hover:bg-white/10 hover:text-white transition-colors relative">
-                <Bell size={16} />
-                <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
-              </button>
+              <div className="relative">
+                <button
+                  ref={notificationsButtonRef}
+                  type="button"
+                  onClick={() => {
+                    setIsNotificationsOpen((prev) => {
+                      const next = !prev;
+                      if (next) {
+                        markNotificationsRead();
+                      }
+                      return next;
+                    });
+                  }}
+                  className="p-1.5 rounded-md text-gray-400 hover:bg-white/10 hover:text-white transition-colors relative"
+                  aria-label="Notifications"
+                >
+                  <Bell size={16} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-[10px] text-white flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
           </header>
 
@@ -3868,7 +5657,13 @@ const MainDashboard = ({ onLogout }) => {
 
             {!isLoadingData && !dataError && activeClass && (
               <>
-                {activeTab === 'dashboard' && <DashboardView students={students} activeClass={activeClass} />}
+                {activeTab === 'dashboard' && (
+                  <DashboardView
+                    students={students}
+                    activeClass={activeClass}
+                    attendanceRecords={todayAttendanceRecords}
+                  />
+                )}
                 {activeTab === 'schedule' && (
                   <ScheduleView 
                     schedules={schedules} 
@@ -3876,9 +5671,21 @@ const MainDashboard = ({ onLogout }) => {
                     onAddSchedule={addSchedule}
                     onEditSchedule={editSchedule}
                     onDeleteSchedule={deleteSchedule}
+                    searchQuery={searchQuery}
                   />
                 )}
-                {activeTab === 'attendance' && <AttendanceView students={students} activeClass={activeClass} onUpdateStatus={updateStudentStatus} />}
+                {activeTab === 'attendance' && (
+                  <AttendanceView
+                    students={students}
+                    activeClass={activeClass}
+                    attendanceDate={attendanceDate}
+                    onAttendanceDateChange={setAttendanceDate}
+                    attendanceRecords={attendanceRecords}
+                    onUpdateStatus={updateStudentStatus}
+                    isHistoryLoading={isAttendanceLoading}
+                    searchQuery={searchQuery}
+                  />
+                )}
                 {activeTab === 'students' && (
                   <StudentsDataView 
                     students={students} 
@@ -3886,6 +5693,10 @@ const MainDashboard = ({ onLogout }) => {
                     onAddStudent={addStudent}
                     onDeleteStudent={deleteStudent}
                     onEditStudent={editStudent}
+                    onImportStudents={importStudents}
+                    onRefreshStudents={refreshStudents}
+                    onDeleteStudentsBatch={deleteStudentsBatch}
+                    searchQuery={searchQuery}
                   />
                 )}
                 {activeTab === 'grades' && (
@@ -3894,12 +5705,15 @@ const MainDashboard = ({ onLogout }) => {
                     activeClass={activeClass} 
                     onUpdateGrades={updateGrades}
                     onUpdateAssessmentTypes={updateAssessmentTypes}
+                    searchQuery={searchQuery}
+                    onImportGrades={importGrades}
                   />
                 )}
               </>
             )}
           </div>
         </main>
+        {notificationsPopover}
       </div>
   );
 };
