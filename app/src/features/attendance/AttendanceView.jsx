@@ -413,7 +413,7 @@ const AttendanceView = ({
                                 onUpdateStatus(student.id, opt.label, attendanceDate, nextComment);
                                 setOpenDropdown(null);
                               }}
-                              className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-emerald-500 hover:text-white flex items-center gap-2 transition-colors"
+                              className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-sky-500 hover:text-white flex items-center gap-2 transition-colors"
                             >
                               <div className={`w-1.5 h-1.5 rounded-full ${opt.label === displayStatus ? 'bg-white' : 'bg-transparent'}`} />
                               {opt.label}
@@ -454,7 +454,7 @@ const AttendanceView = ({
                         if (trimmed === previous) return;
                         onUpdateStatus(student.id, displayStatus, attendanceDate, trimmed);
                       }}
-                      className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-gray-100 placeholder:text-gray-500 focus:border-emerald-500 outline-none transition-colors"
+                      className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-gray-100 placeholder:text-gray-500 focus:border-sky-500 outline-none transition-colors"
                       placeholder="Add details..."
                     />
                   </div>
@@ -529,7 +529,7 @@ const AttendanceView = ({
                                   onUpdateStatus(student.id, opt.label, attendanceDate, nextComment);
                                   setOpenDropdown(null);
                                 }}
-                                className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-emerald-500 hover:text-white flex items-center gap-2 transition-colors"
+                                className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-sky-500 hover:text-white flex items-center gap-2 transition-colors"
                               >
                                 <div className={`w-1.5 h-1.5 rounded-full ${opt.label === displayStatus ? 'bg-white' : 'bg-transparent'}`} />
                                 {opt.label}
@@ -554,7 +554,7 @@ const AttendanceView = ({
                               if (trimmed === previous) return;
                               onUpdateStatus(student.id, displayStatus, attendanceDate, trimmed);
                             }}
-                            className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-gray-100 placeholder:text-gray-500 focus:border-emerald-500 outline-none transition-colors"
+                            className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-gray-100 placeholder:text-gray-500 focus:border-sky-500 outline-none transition-colors"
                             placeholder="Add details..."
                           />
                         </div>
@@ -664,7 +664,7 @@ const AttendanceView = ({
           </div>
           <div className="mt-2 h-2 rounded-full bg-white/10 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all"
+              className="h-full bg-gradient-to-r from-sky-500 to-sky-400 transition-all"
               style={{ width: `${attendanceRate}%` }}
             />
           </div>
@@ -699,7 +699,7 @@ const AttendanceView = ({
                     onClick={() => setExportType(option.id)}
                     className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ${
                       isActive
-                        ? 'bg-emerald-600/80 border-emerald-500 text-white'
+                        ? 'bg-sky-600/80 border-sky-500 text-white'
                         : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'
                     }`}
                   >
@@ -746,7 +746,7 @@ const AttendanceView = ({
               type="button"
               onClick={handleExport}
               disabled={isExporting}
-              className="px-4 py-2 rounded-lg text-xs bg-emerald-600 text-white hover:bg-emerald-500 font-semibold shadow-lg shadow-emerald-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+              className="px-4 py-2 rounded-lg text-xs bg-sky-600 text-white hover:bg-sky-500 font-semibold shadow-lg shadow-sky-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
             >
               {isExporting ? (
                 <>

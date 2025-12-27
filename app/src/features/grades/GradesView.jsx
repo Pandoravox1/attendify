@@ -333,19 +333,19 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
   };
 
   const getGradeColor = (avg) => {
-    if (avg >= 90) return 'text-green-400';
-    if (avg >= 75) return 'text-emerald-400';
+    if (avg >= 90) return 'text-sky-400';
+    if (avg >= 75) return 'text-sky-400';
     if (avg >= 60) return 'text-yellow-400';
     if (avg >= 45) return 'text-orange-400';
     return 'text-red-400';
   };
 
   const getGradeBadge = (avg) => {
-    if (avg >= 95) return { label: 'A', bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' };
-    if (avg >= 90) return { label: 'A-', bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' };
-    if (avg >= 85) return { label: 'B+', bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30' };
-    if (avg >= 80) return { label: 'B', bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30' };
-    if (avg >= 75) return { label: 'B-', bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30' };
+    if (avg >= 95) return { label: 'A', bg: 'bg-sky-500/20', text: 'text-sky-400', border: 'border-sky-500/30' };
+    if (avg >= 90) return { label: 'A-', bg: 'bg-sky-500/20', text: 'text-sky-400', border: 'border-sky-500/30' };
+    if (avg >= 85) return { label: 'B+', bg: 'bg-sky-500/20', text: 'text-sky-400', border: 'border-sky-500/30' };
+    if (avg >= 80) return { label: 'B', bg: 'bg-sky-500/20', text: 'text-sky-400', border: 'border-sky-500/30' };
+    if (avg >= 75) return { label: 'B-', bg: 'bg-sky-500/20', text: 'text-sky-400', border: 'border-sky-500/30' };
     if (avg >= 70) return { label: 'C+', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' };
     if (avg >= 65) return { label: 'C', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' };
     if (avg >= 60) return { label: 'C-', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' };
@@ -356,8 +356,8 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
   };
 
   const getAttitudeBadge = (value) => {
-    if (value === 'EE') return { label: 'EE', bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' };
-    if (value === 'ME') return { label: 'ME', bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30' };
+    if (value === 'EE') return { label: 'EE', bg: 'bg-sky-500/20', text: 'text-sky-400', border: 'border-sky-500/30' };
+    if (value === 'ME') return { label: 'ME', bg: 'bg-sky-500/20', text: 'text-sky-400', border: 'border-sky-500/30' };
     return { label: 'DME', bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' };
   };
 
@@ -685,7 +685,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
                   <td className="p-3 text-right pr-6 w-16">
                     <button 
                       onClick={() => openEditModal(student)}
-                      className="p-1.5 rounded-md bg-white/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                      className="p-1.5 rounded-md bg-white/10 text-sky-400 hover:bg-sky-500/20 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
                     >
                       <Edit3 size={14} />
                     </button>
@@ -791,7 +791,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
           {importError ? (
             <span className="text-red-400">{importError}</span>
           ) : (
-            <span className="text-emerald-300">{importSummary}</span>
+            <span className="text-sky-300">{importSummary}</span>
           )}
         </div>
       )}
@@ -808,7 +808,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
         </div>
         <div className="macos-glass-panel rounded-xl p-3">
           <p className="text-[10px] text-gray-400 uppercase font-medium">Attitude Average</p>
-          <p className="text-xl font-bold text-emerald-400">{classStats.attitudeLabel}</p>
+          <p className="text-xl font-bold text-sky-400">{classStats.attitudeLabel}</p>
           <p className="text-[10px] text-gray-500 mt-1">EE / ME / DME</p>
         </div>
       </div>
@@ -851,10 +851,10 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
             <input
               value={newAssessment}
               onChange={(e) => setNewAssessment(e.target.value)}
-              className="w-full md:w-48 bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-xs focus:border-emerald-500 outline-none transition-all"
+              className="w-full md:w-48 bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-xs focus:border-sky-500 outline-none transition-all"
               placeholder="Add assessment"
             />
-            <button type="submit" className="px-3 py-2 rounded-lg text-xs bg-emerald-600 text-white hover:bg-emerald-500 transition-colors">
+            <button type="submit" className="px-3 py-2 rounded-lg text-xs bg-sky-600 text-white hover:bg-sky-500 transition-colors">
               Add
             </button>
           </form>
@@ -896,7 +896,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
                     onClick={() => setAttitudeForm(option)}
                     className={`py-2 rounded-lg text-xs font-semibold border transition-all ${
                       isSelected
-                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/20'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-lg shadow-sky-600/20'
                         : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
                     }`}
                   >
@@ -918,7 +918,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
                   pattern="[0-9]*"
                   value={gradeForm[type] ?? 0}
                   onChange={(e) => handleGradeChange(type, e.target.value)}
-                  className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-base font-semibold text-center focus:border-emerald-500 outline-none transition-all"
+                  className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-base font-semibold text-center focus:border-sky-500 outline-none transition-all"
                 />
               </div>
             ))}
@@ -932,11 +932,11 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
           <div className="bg-white/5 rounded-lg p-3 border border-white/10">
             <p className="text-[10px] text-gray-400 uppercase font-medium mb-2">Grade Scale</p>
             <div className="flex flex-wrap gap-2 text-xs">
-              <span className="text-green-400">A: 95-100</span>
-              <span className="text-green-400">A-: 90-94</span>
-              <span className="text-emerald-400">B+: 85-89</span>
-              <span className="text-emerald-400">B: 80-84</span>
-              <span className="text-emerald-400">B-: 75-79</span>
+              <span className="text-sky-400">A: 95-100</span>
+              <span className="text-sky-400">A-: 90-94</span>
+              <span className="text-sky-400">B+: 85-89</span>
+              <span className="text-sky-400">B: 80-84</span>
+              <span className="text-sky-400">B-: 75-79</span>
               <span className="text-yellow-400">C+: 70-74</span>
               <span className="text-yellow-400">C: 65-69</span>
               <span className="text-yellow-400">C-: 60-64</span>
@@ -958,7 +958,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
             <button 
               type="submit" 
               disabled={saving}
-              className="px-4 py-2 rounded-lg text-sm bg-emerald-600 text-white hover:bg-emerald-500 font-medium shadow-lg shadow-emerald-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+              className="px-4 py-2 rounded-lg text-sm bg-sky-600 text-white hover:bg-sky-500 font-medium shadow-lg shadow-sky-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
             >
               {saving ? (
                 <>
@@ -1006,7 +1006,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
               rows={3}
               value={zeroNoteText}
               onChange={(e) => setZeroNoteText(e.target.value)}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500 outline-none transition-all resize-none"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-sky-500 outline-none transition-all resize-none"
               placeholder="Explain why this zero should be counted"
             />
           </div>
@@ -1032,7 +1032,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
               type="button"
               disabled={zeroNoteSaving}
               onClick={handleSaveZeroNote}
-              className="px-3 py-2 rounded-lg text-sm bg-emerald-600 text-white hover:bg-emerald-500 font-medium shadow-lg shadow-emerald-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+              className="px-3 py-2 rounded-lg text-sm bg-sky-600 text-white hover:bg-sky-500 font-medium shadow-lg shadow-sky-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
             >
               {zeroNoteSaving ? (
                 <>
@@ -1083,7 +1083,7 @@ const GradesView = ({ students, activeClass, onUpdateGrades, onUpdateAssessmentT
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Enter your password"
             />
           </div>

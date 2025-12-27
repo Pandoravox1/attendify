@@ -19,25 +19,25 @@ body {
 }
 
 :root {
-  --background: 120 10% 6%;
+  --background: 220 12% 6%;
   --foreground: 210 20% 98%;
-  --card: 120 10% 9%;
+  --card: 220 12% 8%;
   --card-foreground: 210 20% 98%;
-  --popover: 120 10% 9%;
+  --popover: 220 12% 8%;
   --popover-foreground: 210 20% 98%;
-  --primary: 142 72% 42%;
+  --primary: 199 89% 55%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 120 8% 14%;
+  --secondary: 220 10% 12%;
   --secondary-foreground: 210 20% 98%;
-  --muted: 120 8% 14%;
+  --muted: 220 10% 12%;
   --muted-foreground: 215 12% 68%;
-  --accent: 140 10% 18%;
+  --accent: 220 14% 16%;
   --accent-foreground: 210 20% 98%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 98%;
-  --border: 120 6% 22%;
-  --input: 120 6% 22%;
-  --ring: 142 72% 42%;
+  --border: 220 10% 20%;
+  --input: 220 10% 20%;
+  --ring: 199 89% 55%;
 }
 
 input[type='time'] {
@@ -57,41 +57,41 @@ input[type='time']::-webkit-datetime-edit {
 .macos-wallpaper {
   background-color: #050505;
   background-image:
-    radial-gradient(1100px 620px at 12% 12%, rgba(34, 197, 94, 0.28), transparent 60%),
-    radial-gradient(900px 520px at 88% 8%, rgba(16, 185, 129, 0.22), transparent 58%),
-    radial-gradient(900px 700px at 50% 100%, rgba(34, 197, 94, 0.18), transparent 60%),
-    linear-gradient(180deg, #050505 0%, #0b120b 100%);
+    radial-gradient(1100px 620px at 12% 12%, rgba(59, 130, 246, 0.26), transparent 60%),
+    radial-gradient(900px 520px at 88% 8%, rgba(56, 189, 248, 0.22), transparent 58%),
+    radial-gradient(900px 700px at 50% 100%, rgba(14, 116, 144, 0.2), transparent 60%),
+    linear-gradient(180deg, #050505 0%, #0a0f14 100%);
   background-attachment: fixed;
   background-size: cover;
 }
 
 /* Vibrancy Effect */
 .macos-sidebar {
-  background: rgba(14, 18, 14, 0.75);
+  background: rgba(12, 16, 20, 0.75);
   backdrop-filter: blur(25px) saturate(180%);
   -webkit-backdrop-filter: blur(25px) saturate(180%);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 @media (max-width: 768px) {
-  .macos-sidebar.mobile-panel {
-    background: rgba(10, 14, 10, 0.6);
-    backdrop-filter: blur(22px) saturate(160%);
-    -webkit-backdrop-filter: blur(22px) saturate(160%);
-  }
+.macos-sidebar.mobile-panel {
+  background: rgba(10, 12, 16, 0.6);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+}
 }
 
 .macos-content {
-  background: rgba(12, 14, 12, 0.6);
+  background: rgba(10, 12, 16, 0.6);
 }
 
 .macos-glass-panel {
-  background: rgba(14, 18, 14, 0.72);
+  background: rgba(12, 16, 20, 0.72);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.4),
-    0 0 24px rgba(16, 185, 129, 0.12);
+    0 0 24px rgba(56, 189, 248, 0.12);
 }
 
 
@@ -105,8 +105,8 @@ input[type='time']::-webkit-datetime-edit {
 
 .macos-select:focus {
   background: rgba(0, 0, 0, 0.7);
-  border-color: rgba(16, 185, 129, 0.6);
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+  border-color: rgba(56, 189, 248, 0.6);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
 }
 
 .macos-select:invalid {
@@ -128,7 +128,7 @@ input[type='time']::-webkit-datetime-edit {
 }
 
 .macos-loading-panel {
-  background: rgba(10, 14, 12, 0.6);
+  background: rgba(10, 12, 16, 0.6);
   backdrop-filter: blur(16px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
@@ -163,7 +163,7 @@ input[type='time']::-webkit-datetime-edit {
 
 /* Navigation & Interactive Elements */
 .nav-item-active {
-  background: rgba(16, 185, 129, 0.9);
+  background: rgba(56, 189, 248, 0.9);
   color: white;
   box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
@@ -180,7 +180,7 @@ input[type='time']::-webkit-datetime-edit {
 
 /* Table */
 .macos-table-row:nth-child(even) { background-color: rgba(255, 255, 255, 0.03); }
-.macos-table-row:hover { background-color: rgba(16, 185, 129, 0.14) !important; }
+.macos-table-row:hover { background-color: rgba(56, 189, 248, 0.14) !important; }
 
 /* Animations */
 @keyframes slideIn {

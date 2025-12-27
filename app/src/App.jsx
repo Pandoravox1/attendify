@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { format } from 'date-fns';
@@ -46,6 +46,7 @@ import { useStudents } from './hooks/useStudents';
 import attendifyLogo from './assets/attendify-logo.png';
 import { Button } from './components/ui/button';
 import { Calendar as CalendarRac } from './components/ui/calendar-rac';
+import { Checkbox } from './components/ui/checkbox';
 import { Input } from './components/ui/input';
 import { Label } from './components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from './components/ui/popover';
@@ -60,7 +61,8 @@ import {
 
 const SCHOOL_EMAIL_REGEX = /@(?:.+\.sch\.id|uphcollege\.com)$/i;
 const ADMIN_EMAIL = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || '').trim().toLowerCase();
-const AUTH_ERROR_MESSAGE = 'Email atau password yang dimasukkan salah.';
+const AUTH_ERROR_MESSAGE = 'Incorrect email or password.';
+const SUPABASE_MISSING_MESSAGE = 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.';
 const INTRO_DURATION_MS = 4000;
 const DEFAULT_ASSESSMENTS = ['Quiz', 'Midterm', 'Project'];
 const ATTITUDE_OPTIONS = ['EE', 'ME', 'DME'];
@@ -83,9 +85,9 @@ const INITIAL_STUDENTS = [
 ];
 
 const STATUS_OPTIONS = [
-  { label: 'Present', color: 'bg-green-500/20 text-green-400 border-green-500/30' },
+  { label: 'Present', color: 'bg-sky-500/20 text-sky-400 border-sky-500/30' },
   { label: 'Late', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
-  { label: 'Sick', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+  { label: 'Sick', color: 'bg-sky-500/20 text-sky-400 border-sky-500/30' },
   { label: 'Excused', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   { label: 'Unexcused', color: 'bg-rose-500/20 text-rose-400 border-rose-500/30' },
   { label: 'Absent', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
@@ -397,10 +399,10 @@ const buildTimeSlots = (startHour, endHour, stepMinutes = 30) => {
 const TIME_SLOTS = buildTimeSlots(7, 18, 30);
 
 const SCHEDULE_COLORS = [
-  { bg: 'bg-emerald-500/20', border: 'border-emerald-500/40', text: 'text-emerald-400', indicator: 'bg-emerald-500' },
-  { bg: 'bg-emerald-400/20', border: 'border-emerald-400/40', text: 'text-emerald-300', indicator: 'bg-emerald-400' },
-  { bg: 'bg-green-500/20', border: 'border-green-500/40', text: 'text-green-400', indicator: 'bg-green-500' },
-  { bg: 'bg-green-400/20', border: 'border-green-400/40', text: 'text-green-300', indicator: 'bg-green-400' },
+  { bg: 'bg-sky-500/20', border: 'border-sky-500/40', text: 'text-sky-400', indicator: 'bg-sky-500' },
+  { bg: 'bg-sky-400/20', border: 'border-sky-400/40', text: 'text-sky-300', indicator: 'bg-sky-400' },
+  { bg: 'bg-sky-500/20', border: 'border-sky-500/40', text: 'text-sky-400', indicator: 'bg-sky-500' },
+  { bg: 'bg-sky-400/20', border: 'border-sky-400/40', text: 'text-sky-300', indicator: 'bg-sky-400' },
   { bg: 'bg-lime-500/20', border: 'border-lime-500/40', text: 'text-lime-400', indicator: 'bg-lime-500' },
   { bg: 'bg-lime-400/20', border: 'border-lime-400/40', text: 'text-lime-300', indicator: 'bg-lime-400' },
 ];
@@ -521,11 +523,11 @@ const IntroScreen = ({ onFinish }) => {
         transition={{ duration: 0.8 }}
       >
         <motion.div
-          className="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-emerald-500/35 blur-3xl"
+          className="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-sky-500/35 blur-3xl"
           style={{ x: smoothX, y: smoothY }}
         />
         <motion.div
-          className="absolute bottom-[-6rem] right-[-4rem] w-80 h-80 rounded-full bg-emerald-400/25 blur-3xl"
+          className="absolute bottom-[-6rem] right-[-4rem] w-80 h-80 rounded-full bg-sky-400/25 blur-3xl"
           style={{ x: smoothX, y: smoothY }}
         />
         <motion.div
@@ -570,7 +572,7 @@ const IntroScreen = ({ onFinish }) => {
           Attendify
         </motion.h1>
         <motion.p
-          className="mt-2 text-sm text-emerald-100/70"
+          className="mt-2 text-sm text-sky-100/70"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.4 }}
@@ -585,7 +587,7 @@ const IntroScreen = ({ onFinish }) => {
         >
           <div className="w-48 h-1.5 rounded-full bg-white/10 overflow-hidden">
             <motion.div
-              className="h-full bg-gradient-to-r from-emerald-400 via-emerald-300 to-emerald-500"
+              className="h-full bg-gradient-to-r from-sky-400 via-sky-300 to-sky-500"
               initial={{ width: 0 }}
               animate={{ width: '100%' }}
               transition={{ duration: INTRO_DURATION_MS / 1000, ease: 'easeInOut' }}
@@ -604,13 +606,19 @@ const LoginScreen = ({ onLogin }) => {
   const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (!supabase) {
+      setError(SUPABASE_MISSING_MESSAGE);
+    }
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
     const normalizedEmail = credentials.email.trim().toLowerCase();
 
     if (!supabase) {
-      setError(AUTH_ERROR_MESSAGE);
+      setError(SUPABASE_MISSING_MESSAGE);
       return;
     }
     if (!SCHOOL_EMAIL_REGEX.test(normalizedEmail)) {
@@ -642,7 +650,7 @@ const LoginScreen = ({ onLogin }) => {
   return (
     <div className="flex items-center justify-center min-h-[100dvh] w-full relative z-10 p-3 sm:p-4 md:p-8">
       <div className="macos-glass-panel p-6 sm:p-8 md:p-10 rounded-2xl w-full max-w-sm sm:max-w-md animate-in zoom-in-95 duration-500 shadow-2xl relative overflow-hidden group border-white/20">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent blur-sm"></div>
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-gradient-to-r from-transparent via-sky-500/50 to-transparent blur-sm"></div>
 
         <div className="flex flex-col items-center mb-8">
           <img
@@ -670,7 +678,7 @@ const LoginScreen = ({ onLogin }) => {
                 value={credentials.email}
                 onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
                 required
-                className="relative z-0 w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder:text-gray-500 bg-black/50 border-white/20 focus:ring-1 focus:ring-emerald-500/50"
+                className="relative z-0 w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder:text-gray-500 bg-black/50 border-white/20 focus:ring-1 focus:ring-sky-500/50"
               />
             </div>
           </div>
@@ -690,7 +698,7 @@ const LoginScreen = ({ onLogin }) => {
                 value={credentials.password}
                 onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
                 required
-                className="relative z-0 w-full pl-10 pr-10 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder:text-gray-500 bg-black/50 border-white/20 focus:ring-1 focus:ring-emerald-500/50"
+                className="relative z-0 w-full pl-10 pr-10 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder:text-gray-500 bg-black/50 border-white/20 focus:ring-1 focus:ring-sky-500/50"
               />
               <button 
                 type="button"
@@ -711,7 +719,7 @@ const LoginScreen = ({ onLogin }) => {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full mt-5 sm:mt-6 bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 sm:py-3 rounded-xl transition-all shadow-lg shadow-emerald-600/30 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full mt-5 sm:mt-6 bg-sky-600 hover:bg-sky-500 text-white font-medium py-2.5 sm:py-3 rounded-xl transition-all shadow-lg shadow-sky-600/30 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {loading ? (
               <Loader2 size={18} className="animate-spin" />
@@ -857,7 +865,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
                 className="w-20 h-20 rounded-full object-cover shadow-lg"
               />
             ) : (
-              <div className="w-20 h-20 rounded-full bg-gradient-to-b from-emerald-500 to-emerald-700 shadow-lg flex items-center justify-center text-2xl font-bold text-white">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-b from-sky-500 to-sky-700 shadow-lg flex items-center justify-center text-2xl font-bold text-white">
                 {formData.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
               </div>
             )}
@@ -889,7 +897,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
               required
               value={formData.name}
               onChange={(e) => handleChange('name', e.target.value)}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Full name"
             />
           </div>
@@ -904,7 +912,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
               required
               value={formData.nip}
               onChange={(e) => handleChange('nip', e.target.value)}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Employee ID"
             />
           </div>
@@ -919,7 +927,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
               required
               value={formData.subject}
               onChange={(e) => handleChange('subject', e.target.value)}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Subject"
             />
           </div>
@@ -934,7 +942,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
               required
               value={formData.email}
               onChange={(e) => handleChange('email', e.target.value)}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Email address"
             />
           </div>
@@ -948,7 +956,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
               type="tel" 
               value={formData.phone}
               onChange={(e) => handleChange('phone', e.target.value)}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Phone number"
             />
           </div>
@@ -962,7 +970,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
               value={formData.address}
               onChange={(e) => handleChange('address', e.target.value)}
               rows={2}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-emerald-500 outline-none transition-all resize-none"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm focus:border-sky-500 outline-none transition-all resize-none"
               placeholder="Address"
             />
           </div>
@@ -982,7 +990,7 @@ const EditProfileModal = ({ isOpen, onClose, profile, onSave }) => {
           <button 
             type="submit" 
             disabled={saving}
-            className="px-4 py-2 rounded-lg text-sm bg-emerald-600 text-white hover:bg-emerald-500 font-medium shadow-lg shadow-emerald-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
+            className="px-4 py-2 rounded-lg text-sm bg-sky-600 text-white hover:bg-sky-500 font-medium shadow-lg shadow-sky-600/20 transition-colors flex items-center gap-2 disabled:opacity-70"
           >
             {saving ? (
               <>
@@ -1059,12 +1067,12 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
   })?.id;
 
   const activityMeta = {
-    attendance: { icon: Users, color: 'text-green-400' },
-    grade: { icon: BookOpen, color: 'text-emerald-400' },
-    student: { icon: Plus, color: 'text-emerald-400' },
-    class: { icon: School, color: 'text-emerald-400' },
-    schedule: { icon: Calendar, color: 'text-emerald-400' },
-    info: { icon: Bell, color: 'text-emerald-300' },
+    attendance: { icon: Users, color: 'text-sky-400' },
+    grade: { icon: BookOpen, color: 'text-sky-400' },
+    student: { icon: Plus, color: 'text-sky-400' },
+    class: { icon: School, color: 'text-sky-400' },
+    schedule: { icon: Calendar, color: 'text-sky-400' },
+    info: { icon: Bell, color: 'text-sky-300' },
   };
   const recentActivities = (notifications || []).slice(0, 3).map((item) => {
     const meta = activityMeta[item.type] || activityMeta.info;
@@ -1093,8 +1101,8 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="macos-glass-panel rounded-xl p-4">
           <div className="flex justify-between items-start mb-2">
-            <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-400"><Users size={18} /></div>
-            <span className="text-xs font-medium text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">Today</span>
+            <div className="p-2 bg-sky-500/20 rounded-lg text-sky-400"><Users size={18} /></div>
+            <span className="text-xs font-medium text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full">Today</span>
           </div>
           <h3 className="text-2xl font-semibold text-white">{attendanceRate}%</h3>
           <p className="text-xs text-gray-400 mt-1">Attendance: {activeClass.name}</p>
@@ -1102,7 +1110,7 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
 
         <div className="macos-glass-panel rounded-xl p-4">
           <div className="flex justify-between items-start mb-2">
-            <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-400"><BookOpen size={18} /></div>
+            <div className="p-2 bg-sky-500/20 rounded-lg text-sky-400"><BookOpen size={18} /></div>
           </div>
           <h3 className="text-2xl font-semibold text-white">{classAvg}</h3>
           <p className="text-xs text-gray-400 mt-1">Average Score</p>
@@ -1110,7 +1118,7 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
 
         <div className="macos-glass-panel rounded-xl p-4">
           <div className="flex justify-between items-start mb-2">
-            <div className="p-2 bg-green-500/20 rounded-lg text-green-400"><Users size={18} /></div>
+            <div className="p-2 bg-sky-500/20 rounded-lg text-sky-400"><Users size={18} /></div>
           </div>
           <h3 className="text-2xl font-semibold text-white">{classStudents.length}</h3>
           <p className="text-xs text-gray-400 mt-1">Total Students</p>
@@ -1118,7 +1126,7 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
 
         <div className="macos-glass-panel rounded-xl p-4">
           <div className="flex justify-between items-start mb-2">
-            <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-400">
+            <div className="p-2 bg-sky-500/20 rounded-lg text-sky-400">
                {activeClass.type === 'homeroom' ? <Home size={18} /> : <School size={18} />}
             </div>
           </div>
@@ -1135,24 +1143,24 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
         <div className="macos-glass-panel rounded-xl p-4 lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Calendar size={16} className="text-emerald-400" />
+              <Calendar size={16} className="text-sky-400" />
               Today's Attendance Summary
             </h3>
             <span className="text-xs text-gray-400">{new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
           </div>
           
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-center">
-              <div className="text-2xl font-bold text-green-400">{presentCount}</div>
-              <div className="text-[10px] text-green-400/80 uppercase font-medium mt-1">Present</div>
+            <div className="bg-sky-500/10 border border-sky-500/20 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-sky-400">{presentCount}</div>
+              <div className="text-[10px] text-sky-400/80 uppercase font-medium mt-1">Present</div>
             </div>
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-center">
               <div className="text-2xl font-bold text-yellow-400">{lateCount}</div>
               <div className="text-[10px] text-yellow-400/80 uppercase font-medium mt-1">Late</div>
             </div>
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-center">
-              <div className="text-2xl font-bold text-emerald-400">{sickCount}</div>
-              <div className="text-[10px] text-emerald-400/80 uppercase font-medium mt-1">Sick</div>
+            <div className="bg-sky-500/10 border border-sky-500/20 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-sky-400">{sickCount}</div>
+              <div className="text-[10px] text-sky-400/80 uppercase font-medium mt-1">Sick</div>
             </div>
             <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3 text-center">
               <div className="text-2xl font-bold text-purple-400">{permitCount}</div>
@@ -1176,7 +1184,7 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
             </div>
             <div className="h-2 bg-white/10 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full transition-all duration-500"
+                className="h-full bg-gradient-to-r from-sky-500 to-sky-400 rounded-full transition-all duration-500"
                 style={{ width: `${classStudents.length ? ((presentCount + lateCount) / classStudents.length) * 100 : 0}%` }}
               />
             </div>
@@ -1186,7 +1194,7 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
         {/* Today's Schedule */}
         <div className="macos-glass-panel rounded-xl p-4">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-4">
-            <Calendar size={16} className="text-emerald-400" />
+            <Calendar size={16} className="text-sky-400" />
             Schedule Today
           </h3>
           {todaySchedule.length ? (
@@ -1197,16 +1205,16 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
                 return (
                   <div
                     key={item.id}
-                    className={`flex items-center gap-3 p-2 rounded-lg ${isActive ? 'bg-emerald-500/10 border border-emerald-500/20' : 'hover:bg-white/5'}`}
+                    className={`flex items-center gap-3 p-2 rounded-lg ${isActive ? 'bg-sky-500/10 border border-sky-500/20' : 'hover:bg-white/5'}`}
                   >
-                    <div className={`w-1 h-10 rounded-full ${isActive ? 'bg-emerald-500' : color.indicator}`} />
+                    <div className={`w-1 h-10 rounded-full ${isActive ? 'bg-sky-500' : color.indicator}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-gray-400">{item.startTime} - {item.endTime}</p>
                       <p className="text-sm text-white font-medium truncate">{item.className || 'Class'}</p>
                       <p className="text-[10px] text-gray-500">{item.subject || '-'}</p>
                     </div>
                     {isActive && (
-                      <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full">Now</span>
+                      <span className="text-[10px] bg-sky-500/20 text-sky-400 px-2 py-1 rounded-full">Now</span>
                     )}
                   </div>
                 );
@@ -1223,16 +1231,16 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
         {/* Top Students */}
         <div className="macos-glass-panel rounded-xl p-4">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-4">
-            <BookOpen size={16} className="text-emerald-400" />
+            <BookOpen size={16} className="text-sky-400" />
             Top Students
           </h3>
           <div className="space-y-3">
             {topStudents.length > 0 ? topStudents.map((student, index) => (
               <div key={student.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors">
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                  index === 0 ? 'bg-emerald-500/20 text-emerald-400' :
-                  index === 1 ? 'bg-emerald-400/20 text-emerald-300' :
-                  'bg-emerald-300/20 text-emerald-200'
+                  index === 0 ? 'bg-sky-500/20 text-sky-400' :
+                  index === 1 ? 'bg-sky-400/20 text-sky-300' :
+                  'bg-sky-300/20 text-sky-200'
                 }`}>
                   {index + 1}
                 </div>
@@ -1254,7 +1262,7 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
         {/* Recent Activity */}
         <div className="macos-glass-panel rounded-xl p-4">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-4">
-            <Bell size={16} className="text-emerald-400" />
+            <Bell size={16} className="text-sky-400" />
             Recent Activity
           </h3>
           {recentActivities.length ? (
@@ -1279,40 +1287,40 @@ const DashboardView = ({ students, activeClass, attendanceRecords, schedules, no
         {/* Quick Actions */}
         <div className="macos-glass-panel rounded-xl p-4">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-4">
-            <LayoutGrid size={16} className="text-green-400" />
+            <LayoutGrid size={16} className="text-sky-400" />
             Quick Actions
           </h3>
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => onQuickAction?.('attendance')}
-              className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors group"
+              className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg bg-sky-500/10 border border-sky-500/20 hover:bg-sky-500/20 transition-colors group"
             >
-              <Users size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+              <Users size={20} className="text-sky-400 group-hover:scale-110 transition-transform" />
               <span className="text-xs text-gray-300">Attendance</span>
             </button>
             <button
               type="button"
               onClick={() => onQuickAction?.('grades')}
-              className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors group"
+              className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg bg-sky-500/10 border border-sky-500/20 hover:bg-sky-500/20 transition-colors group"
             >
-              <BookOpen size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+              <BookOpen size={20} className="text-sky-400 group-hover:scale-110 transition-transform" />
               <span className="text-xs text-gray-300">Enter Grades</span>
             </button>
             <button
               type="button"
               onClick={() => onQuickAction?.('add-student')}
-              className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg bg-green-500/10 border border-green-500/20 hover:bg-green-500/20 transition-colors group"
+              className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg bg-sky-500/10 border border-sky-500/20 hover:bg-sky-500/20 transition-colors group"
             >
-              <Plus size={20} className="text-green-400 group-hover:scale-110 transition-transform" />
+              <Plus size={20} className="text-sky-400 group-hover:scale-110 transition-transform" />
               <span className="text-xs text-gray-300">Add Student</span>
             </button>
             <button
               type="button"
               onClick={() => onQuickAction?.('schedule')}
-              className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors group"
+              className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg bg-sky-500/10 border border-sky-500/20 hover:bg-sky-500/20 transition-colors group"
             >
-              <Calendar size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+              <Calendar size={20} className="text-sky-400 group-hover:scale-110 transition-transform" />
               <span className="text-xs text-gray-300">Schedule</span>
             </button>
           </div>
@@ -1350,9 +1358,11 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
     id: '',
     name: '',
     email: '',
-    gender: '',
+    gender: 'Male',
     studentNumber: '',
   });
+  const genderMaleId = useId();
+  const genderFemaleId = useId();
   const classStudents = students.filter(s => isSameClassId(s.classId, activeClass.id));
   const selectedCount = selectedIds.size;
   const sortedStudents = useMemo(() => {
@@ -1417,10 +1427,6 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.gender) {
-      setFormError('Please select a gender.');
-      return;
-    }
     setFormSaving(true);
     setFormError('');
     const result = isEditMode
@@ -1432,7 +1438,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
       return;
     }
     setIsModalOpen(false);
-    setFormData({ id: '', name: '', email: '', gender: '', studentNumber: '' });
+    setFormData({ id: '', name: '', email: '', gender: 'Male', studentNumber: '' });
   };
 
   const openEdit = (student) => {
@@ -1440,7 +1446,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
       id: student.id,
       name: student.name,
       email: student.email || '',
-      gender: student.gender || '',
+      gender: student.gender || 'Male',
       studentNumber: student.studentNumber || '',
     });
     setFormError('');
@@ -1449,7 +1455,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
   };
 
   const openAdd = () => {
-    setFormData({ id: '', name: '', email: '', gender: '', studentNumber: '' });
+    setFormData({ id: '', name: '', email: '', gender: 'Male', studentNumber: '' });
     setFormError('');
     setIsEditMode(false);
     setIsModalOpen(true);
@@ -1779,7 +1785,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
           >
             <FileUp size={14} /> Import XLSX
           </button>
-          <button onClick={openAdd} className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-colors shadow-lg shadow-emerald-500/20">
+          <button onClick={openAdd} className="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-colors shadow-lg shadow-sky-500/20">
             <Plus size={16} /> Add Student
           </button>
         </div>
@@ -1808,7 +1814,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
                       }
                       setSelectedIds(new Set(filteredStudents.map(student => student.id)));
                     }}
-                    className="h-4 w-4 rounded border border-white/30 bg-black/30 text-emerald-500 focus:ring-emerald-500/40"
+                    className="h-4 w-4 rounded border border-white/30 bg-black/30 text-sky-500 focus:ring-sky-500/40"
                     aria-label="Select all students"
                   />
                 </th>
@@ -1881,7 +1887,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
                           return next;
                         });
                       }}
-                      className="h-4 w-4 rounded border border-white/30 bg-black/30 text-emerald-500 focus:ring-emerald-500/40"
+                      className="h-4 w-4 rounded border border-white/30 bg-black/30 text-sky-500 focus:ring-sky-500/40"
                       aria-label={`Select ${student.name}`}
                     />
                   </td>
@@ -1890,7 +1896,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
                   <td className="p-3 sm:p-4 text-gray-300 text-sm break-all">{student.email || '-'}</td>
                   <td className="p-3 sm:p-4 text-gray-300 text-sm hidden sm:table-cell">{student.gender || '-'}</td>
                   <td className="p-3 sm:p-4 text-right pr-4 sm:pr-6 flex justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => openEdit(student)} className="p-1.5 rounded-md bg-white/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors">
+                    <button onClick={() => openEdit(student)} className="p-1.5 rounded-md bg-white/10 text-sky-400 hover:bg-sky-500/20 transition-colors">
                       <Edit3 size={14} />
                     </button>
                     <button onClick={() => openDelete(student)} className="p-1.5 rounded-md bg-white/10 text-red-400 hover:bg-red-500/20 transition-colors">
@@ -1916,7 +1922,9 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
 
       <Modal 
         isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+        onClose={() => {
+          setIsModalOpen(false);
+        }} 
         title={isEditMode ? "Edit Student" : "Add New Student"}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1927,7 +1935,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
               required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Full name"
             />
           </div>
@@ -1938,26 +1946,36 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
               required
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Email address"
             />
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Gender</label>
-            <Select
-              value={formData.gender}
-              onValueChange={(value) => setFormData((prev) => (
-                prev.gender === value ? prev : { ...prev, gender: value }
-              ))}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select gender" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Male">Male</SelectItem>
-                <SelectItem value="Female">Female</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap gap-4">
+              <label
+                htmlFor={genderMaleId}
+                className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2 cursor-pointer select-none"
+              >
+                <Checkbox
+                  id={genderMaleId}
+                  checked={formData.gender === 'Male'}
+                  onChange={() => setFormData((prev) => ({ ...prev, gender: 'Male' }))}
+                />
+                <span className="text-xs text-gray-200">Male</span>
+              </label>
+              <label
+                htmlFor={genderFemaleId}
+                className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2 cursor-pointer select-none"
+              >
+                <Checkbox
+                  id={genderFemaleId}
+                  checked={formData.gender === 'Female'}
+                  onChange={() => setFormData((prev) => ({ ...prev, gender: 'Female' }))}
+                />
+                <span className="text-xs text-gray-200">Female</span>
+              </label>
+            </div>
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Student Number</label>
@@ -1966,7 +1984,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
               required
               value={formData.studentNumber}
               onChange={(e) => setFormData({ ...formData, studentNumber: e.target.value })}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Student number"
             />
           </div>
@@ -1974,11 +1992,19 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
             <p className="text-xs text-red-400">{formError}</p>
           )}
           <div className="flex justify-end gap-2 mt-6">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsModalOpen(false);
+              }}
+              className="px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors"
+            >
+              Cancel
+            </button>
             <button
               type="submit"
               disabled={formSaving}
-              className="px-3 py-2 rounded-lg text-sm bg-emerald-600 text-white hover:bg-emerald-500 font-medium shadow-lg shadow-emerald-600/20 transition-colors disabled:opacity-70"
+              className="px-3 py-2 rounded-lg text-sm bg-sky-600 text-white hover:bg-sky-500 font-medium shadow-lg shadow-sky-600/20 transition-colors disabled:opacity-70"
             >
               {formSaving ? 'Saving...' : 'Save'}
             </button>
@@ -2014,7 +2040,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
               type="password"
               value={deletePassword}
               onChange={(e) => setDeletePassword(e.target.value)}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Enter your password"
             />
           </div>
@@ -2078,7 +2104,7 @@ const StudentsDataView = ({ students, activeClass, onAddStudent, onDeleteStudent
               type="password"
               value={bulkDeletePassword}
               onChange={(e) => setBulkDeletePassword(e.target.value)}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Enter your password"
             />
           </div>
@@ -2183,7 +2209,7 @@ const ScheduleTimeInput = ({ id, label, value, onChange }) => (
       step="1"
       value={value || ''}
       onChange={(event) => onChange(event.target.value)}
-      className="h-10 rounded-lg border-white/20 bg-black/30 text-white placeholder:text-gray-400 focus-visible:ring-1 focus-visible:ring-emerald-500/40 focus-visible:ring-offset-0 appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+      className="h-10 rounded-lg border-white/20 bg-black/30 text-white placeholder:text-gray-400 focus-visible:ring-1 focus-visible:ring-sky-500/40 focus-visible:ring-offset-0 appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
     />
   </div>
 );
@@ -2363,7 +2389,7 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
       {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-3">
-          <button onClick={goToToday} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
+          <button onClick={goToToday} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors">
             Today
           </button>
           <div className="flex items-center gap-1">
@@ -2378,7 +2404,7 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
             {currentWeekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </span>
         </div>
-        <button onClick={() => openAddModal()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-colors shadow-lg shadow-emerald-500/20">
+        <button onClick={() => openAddModal()} className="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-colors shadow-lg shadow-sky-500/20">
           <Plus size={16} /> Add Schedule
         </button>
       </div>
@@ -2391,8 +2417,8 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
             <div className="schedule-grid-header sticky top-0 z-20 border-b border-white/10">
               <div className="p-2 text-center text-xs text-gray-500">Time</div>
               {weekDates.map(({ day, dateStr }) => (
-                <div key={day} className={`p-2 text-center border-l border-white/10 ${day === todayStr ? 'bg-emerald-500/20' : ''}`}>
-                  <p className={`text-xs font-medium ${day === todayStr ? 'text-emerald-300' : 'text-gray-400'}`}>{day.substring(0, 3)}</p>
+                <div key={day} className={`p-2 text-center border-l border-white/10 ${day === todayStr ? 'bg-sky-500/20' : ''}`}>
+                  <p className={`text-xs font-medium ${day === todayStr ? 'text-sky-300' : 'text-gray-400'}`}>{day.substring(0, 3)}</p>
                   <p className={`text-sm font-semibold ${day === todayStr ? 'text-white' : 'text-gray-200'}`}>{dateStr}</p>
                 </div>
               ))}
@@ -2419,7 +2445,7 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
                   return schedule.date && schedule.date === dayDateKey;
                 });
                 return (
-                  <div key={day} className={`relative border-l border-white/10 ${day === todayStr ? 'bg-emerald-500/5' : ''}`}>
+                  <div key={day} className={`relative border-l border-white/10 ${day === todayStr ? 'bg-sky-500/5' : ''}`}>
                     {/* Grid Lines */}
                     {TIME_SLOTS.map((_, index) => (
                       <div key={index} className="schedule-grid-row border-b border-white/5" />
@@ -2483,8 +2509,10 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
             <div className="col-span-2">
               <label className="block text-xs text-gray-400 mb-1">Class</label>
               <Select
-                value={formData.classId ? String(formData.classId) : ''}
-                onValueChange={(value) => setFormData({ ...formData, classId: value })}
+                value={formData.classId ? String(formData.classId) : undefined}
+                onValueChange={(value) => setFormData((prev) => (
+                  prev.classId === value ? prev : { ...prev, classId: value }
+                ))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select class" />
@@ -2528,7 +2556,7 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
                   aria-pressed={formData.repeatWeekly}
                   onClick={() => setFormData({ ...formData, repeatWeekly: !formData.repeatWeekly })}
                   className={`w-11 h-6 rounded-full border transition-colors ${
-                    formData.repeatWeekly ? 'bg-emerald-600 border-emerald-500' : 'bg-white/10 border-white/20'
+                    formData.repeatWeekly ? 'bg-sky-600 border-sky-500' : 'bg-white/10 border-white/20'
                   }`}
                 >
                   <span
@@ -2543,7 +2571,7 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
           <div>
             <label className="block text-xs text-gray-400 mb-1">Room</label>
             <input type="text" value={formData.room} onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500 outline-none" placeholder="e.g., Room 101" />
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-sky-500 outline-none" placeholder="e.g., Room 101" />
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Color</label>
@@ -2556,7 +2584,7 @@ const ScheduleView = ({ schedules, classes, onAddSchedule, onEditSchedule, onDel
           </div>
           <div className="flex justify-end gap-2 mt-6">
             <button type="button" onClick={() => setIsModalOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
-            <button type="submit" className="px-3 py-2 rounded-lg text-sm bg-emerald-600 text-white hover:bg-emerald-500 font-medium shadow-lg shadow-emerald-600/20 transition-colors">Save</button>
+            <button type="submit" className="px-3 py-2 rounded-lg text-sm bg-sky-600 text-white hover:bg-sky-500 font-medium shadow-lg shadow-sky-600/20 transition-colors">Save</button>
           </div>
         </form>
       </Modal>
@@ -2928,6 +2956,7 @@ const MainDashboard = ({ onLogout }) => {
           setDataError('Please sign in again.');
           setIsLoadingData(false);
         }
+        await onLogout?.();
         return;
       }
 
@@ -3275,7 +3304,7 @@ const MainDashboard = ({ onLogout }) => {
                   placeholder="Search..." 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-black/20 border border-transparent focus:border-emerald-500/50 hover:bg-black/30 text-white text-xs rounded-md pl-9 pr-3 py-1.5 w-32 sm:w-40 md:w-48 transition-all outline-none"
+                  className="bg-black/20 border border-transparent focus:border-sky-500/50 hover:bg-black/30 text-white text-xs rounded-md pl-9 pr-3 py-1.5 w-32 sm:w-40 md:w-48 transition-all outline-none"
                 />
               </div>
               <div className="relative">
@@ -3411,15 +3440,21 @@ const MainDashboard = ({ onLogout }) => {
 const DEV_MODE = false;
 
 const App = () => {
-  // If supabase is not configured or DEV_MODE is true, allow direct access to dashboard for testing
-  const [isAuthenticated, setIsAuthenticated] = useState(DEV_MODE || !supabase);
-  const [authReady, setAuthReady] = useState(DEV_MODE || !supabase);
+  // Allow direct access only for explicit DEV_MODE
+  const [isAuthenticated, setIsAuthenticated] = useState(DEV_MODE);
+  const [authReady, setAuthReady] = useState(DEV_MODE);
   const [showIntro, setShowIntro] = useState(true);
 
   useEffect(() => {
-    if (DEV_MODE || !supabase) {
+    if (DEV_MODE) {
       setAuthReady(true);
       setIsAuthenticated(true); // Auto-login for testing/demo mode
+      return;
+    }
+
+    if (!supabase) {
+      setAuthReady(true);
+      setIsAuthenticated(false);
       return;
     }
 

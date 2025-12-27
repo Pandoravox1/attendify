@@ -3,9 +3,9 @@ const ATTITUDE_OPTIONS = ['EE', 'ME', 'DME'];
 const ATTITUDE_SCORES = { EE: 3, ME: 2, DME: 1 };
 
 const STATUS_OPTIONS = [
-  { label: 'Present', color: 'bg-green-500/20 text-green-400 border-green-500/30' },
+  { label: 'Present', color: 'bg-sky-500/20 text-sky-400 border-sky-500/30' },
   { label: 'Late', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
-  { label: 'Sick', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+  { label: 'Sick', color: 'bg-sky-500/20 text-sky-400 border-sky-500/30' },
   { label: 'Excused', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   { label: 'Unexcused', color: 'bg-rose-500/20 text-rose-400 border-rose-500/30' },
   { label: 'Absent', color: 'bg-red-500/20 text-red-400 border-red-500/30' },

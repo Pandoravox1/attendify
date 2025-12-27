@@ -12,7 +12,7 @@ const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) 
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex h-10 w-full items-center justify-between rounded-lg border border-white/20 bg-black/30 px-3 py-2 text-sm text-gray-200 shadow-sm transition-colors placeholder:text-gray-400 hover:bg-black/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-50',
+      'flex h-10 w-full items-center justify-between rounded-lg border border-white/20 bg-black/30 px-3 py-2 text-sm text-gray-200 shadow-sm transition-colors placeholder:text-gray-400 hover:bg-black/40 focus:outline-none focus:ring-1 focus:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50',
       className
     )}
     {...props}
@@ -54,14 +54,14 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-8 pr-2 text-sm text-gray-200 outline-none focus:bg-white/10 data-[state=checked]:bg-emerald-600/30 data-[state=checked]:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-8 pr-2 text-sm text-gray-200 outline-none focus:bg-white/10 data-[state=checked]:bg-sky-600/30 data-[state=checked]:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     {...props}
   >
     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4 text-emerald-400" />
+        <Check className="h-4 w-4 text-sky-400" />
       </SelectPrimitive.ItemIndicator>
     </span>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

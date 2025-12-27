@@ -102,7 +102,7 @@ const ClassManager = ({ classes, activeClassId, setActiveClassId, onAddClass, on
             <button
               type="button"
               onClick={() => setNewClass({ ...newClass, type: 'homeroom', subtitle: 'Homeroom' })}
-              className={`flex-1 text-[10px] py-1 rounded border transition-colors ${newClass.type === 'homeroom' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'border-white/10 text-gray-400 hover:bg-white/5'}`}
+              className={`flex-1 text-[10px] py-1 rounded border transition-colors ${newClass.type === 'homeroom' ? 'bg-sky-500/20 border-sky-500 text-sky-400' : 'border-white/10 text-gray-400 hover:bg-white/5'}`}
             >
               Homeroom
             </button>
@@ -117,21 +117,21 @@ const ClassManager = ({ classes, activeClassId, setActiveClassId, onAddClass, on
 
           <input
             placeholder="Class name"
-            className="w-full bg-black/30 text-xs text-white px-2 py-1.5 rounded mb-2 border border-white/10 focus:border-emerald-500 outline-none placeholder:text-gray-600"
+            className="w-full bg-black/30 text-xs text-white px-2 py-1.5 rounded mb-2 border border-white/10 focus:border-sky-500 outline-none placeholder:text-gray-600"
             value={newClass.name}
             onChange={e => setNewClass({ ...newClass, name: e.target.value })}
             required
           />
           <input
             placeholder={newClass.type === 'homeroom' ? 'Description' : 'Subject'}
-            className="w-full bg-black/30 text-xs text-white px-2 py-1.5 rounded mb-2 border border-white/10 focus:border-emerald-500 outline-none placeholder:text-gray-600"
+            className="w-full bg-black/30 text-xs text-white px-2 py-1.5 rounded mb-2 border border-white/10 focus:border-sky-500 outline-none placeholder:text-gray-600"
             value={newClass.subtitle}
             onChange={e => setNewClass({ ...newClass, subtitle: e.target.value })}
             required
           />
           <div className="flex gap-2">
             <button type="button" onClick={() => setIsAdding(false)} className="flex-1 bg-white/5 text-gray-400 text-xs py-1.5 rounded hover:bg-white/10">Cancel</button>
-            <button type="submit" className="flex-1 bg-emerald-600/80 text-white text-xs py-1.5 rounded hover:bg-emerald-600 shadow-sm">Save</button>
+            <button type="submit" className="flex-1 bg-sky-600/80 text-white text-xs py-1.5 rounded hover:bg-sky-600 shadow-sm">Save</button>
           </div>
         </form>
       )}
@@ -167,7 +167,7 @@ const ClassManager = ({ classes, activeClassId, setActiveClassId, onAddClass, on
               type="password"
               value={deletePassword}
               onChange={(e) => setDeletePassword(e.target.value)}
-              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500 outline-none transition-all"
+              className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:border-sky-500 outline-none transition-all"
               placeholder="Enter your password"
             />
           </div>
@@ -269,7 +269,7 @@ const Sidebar = ({
                   className="w-8 h-8 rounded-full object-cover shadow-inner"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-b from-emerald-500 to-emerald-700 shadow-inner flex items-center justify-center text-xs font-bold text-white">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-b from-sky-500 to-sky-700 shadow-inner flex items-center justify-center text-xs font-bold text-white">
                   {teacherProfile.avatar}
                 </div>
               )}
@@ -281,7 +281,7 @@ const Sidebar = ({
                 <button
                   type="button"
                   onClick={onEditProfile}
-                  className="text-gray-400 hover:text-emerald-400 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                  className="text-gray-400 hover:text-sky-400 transition-colors opacity-0 group-hover:opacity-100 p-1"
                   title="Edit Profile"
                 >
                   <Edit3 size={12} />
