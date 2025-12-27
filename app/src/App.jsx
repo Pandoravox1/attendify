@@ -3491,10 +3491,10 @@ const App = () => {
   const handleLogin = () => setIsAuthenticated(true);
 
   const handleLogout = async () => {
+    setIsAuthenticated(false);
     if (supabase) {
       await supabase.auth.signOut();
     }
-    setIsAuthenticated(false);
   };
 
   if (!authReady) {
