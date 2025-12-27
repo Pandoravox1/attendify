@@ -419,69 +419,50 @@ const INITIAL_SCHEDULES = [
   { id: 9, day: 'Friday', startTime: '11:00', endTime: '12:30', classId: '3', className: 'Grade 12 Science 3', subject: 'Advanced Physics', room: 'Room 203', colorIndex: 2, repeatWeekly: true, date: '' },
 ];
 
-// --- PARTICLE BACKGROUND COMPONENT ---
+// --- PIXEL BACKGROUND COMPONENT ---
 const ParticleBackground = () => {
-  const canvasRef = useRef(null);
+  const pixels = useMemo(() => (
+    Array.from({ length: 72 }, (_, index) => ({
+      id: index,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      size: Math.random() > 0.8 ? 4 : 3,
+      driftX: (Math.random() - 0.5) * 14,
+      driftY: (Math.random() - 0.5) * 20,
+      opacity: 0.2 + Math.random() * 0.5,
+      duration: 6 + Math.random() * 8,
+      delay: Math.random() * 3,
+    }))
+  ), []);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    let animationFrameId;
-    let particles = [];
-
-    const resizeCanvas = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
-    class Particle {
-      constructor() {
-        this.x = Math.random() * canvas.width;
-        this.y = Math.random() * canvas.height;
-        this.size = Math.random() * 2 + 0.5;
-        this.speedX = Math.random() * 0.4 - 0.2;
-        this.speedY = Math.random() * 0.4 - 0.2;
-        this.opacity = Math.random() * 0.5 + 0.1;
-      }
-      update() {
-        this.x += this.speedX;
-        this.y += this.speedY;
-        if (this.x > canvas.width) this.x = 0;
-        else if (this.x < 0) this.x = canvas.width;
-        if (this.y > canvas.height) this.y = 0;
-        else if (this.y < 0) this.y = canvas.height;
-      }
-      draw() {
-        ctx.fillStyle = `rgba(34, 197, 94, ${this.opacity})`;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    const init = () => {
-      particles = [];
-      for (let i = 0; i < 80; i++) particles.push(new Particle());
-    };
-
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      particles.forEach(p => { p.update(); p.draw(); });
-      animationFrameId = requestAnimationFrame(animate);
-    };
-
-    init();
-    animate();
-    return () => {
-      window.removeEventListener('resize', resizeCanvas);
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, []);
-
-  return <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none" />;
+  return (
+    <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+      {pixels.map((pixel) => (
+        <motion.span
+          key={pixel.id}
+          className="absolute bg-sky-300/70"
+          style={{
+            left: `${pixel.x}%`,
+            top: `${pixel.y}%`,
+            width: `${pixel.size}px`,
+            height: `${pixel.size}px`,
+            boxShadow: '0 0 10px rgba(56, 189, 248, 0.35)',
+          }}
+          animate={{
+            x: [0, pixel.driftX, 0],
+            y: [0, pixel.driftY, 0],
+            opacity: [0.15, pixel.opacity, 0.15],
+          }}
+          transition={{
+            duration: pixel.duration,
+            delay: pixel.delay,
+            repeat: Infinity,
+            ease: 'linear',
+          }}
+        />
+      ))}
+    </div>
+  );
 };
 
 const IntroScreen = ({ onFinish }) => {
@@ -665,7 +646,25 @@ const LoginScreen = ({ onLogin }) => {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-300 ml-1 uppercase tracking-wide">Email Address</label>
-            <div className="relative">
+            <motion.div
+              className="relative rounded-xl"
+              initial={{ opacity: 0.9 }}
+            >
+              <motion.span
+                className="pointer-events-none absolute inset-0 rounded-xl p-[1px]"
+                initial={{ backgroundPosition: '0% 50%' }}
+                animate={{ backgroundPosition: ['0% 50%', '200% 50%'] }}
+                transition={{ duration: 2.8, repeat: Infinity, ease: 'linear', delay: 0.4 }}
+                style={{
+                  backgroundImage:
+                    'linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.45) 45%, transparent 70%)',
+                  backgroundSize: '200% 100%',
+                  WebkitMask:
+                    'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+                  WebkitMaskComposite: 'xor',
+                  maskComposite: 'exclude',
+                }}
+              />
               <span className="auth-icon absolute left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
                 <EnvelopeSimple
                   size={16}
@@ -680,12 +679,30 @@ const LoginScreen = ({ onLogin }) => {
                 required
                 className="relative z-0 w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-xl text-sm text-white placeholder:text-gray-500 bg-black/50 border-white/20 focus:ring-1 focus:ring-sky-500/50"
               />
-            </div>
+            </motion.div>
           </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-300 ml-1 uppercase tracking-wide">Password</label>
-            <div className="relative">
+            <motion.div
+              className="relative rounded-xl"
+              initial={{ opacity: 0.9 }}
+            >
+              <motion.span
+                className="pointer-events-none absolute inset-0 rounded-xl p-[1px]"
+                initial={{ backgroundPosition: '0% 50%' }}
+                animate={{ backgroundPosition: ['0% 50%', '200% 50%'] }}
+                transition={{ duration: 2.8, repeat: Infinity, ease: 'linear', delay: 1.1 }}
+                style={{
+                  backgroundImage:
+                    'linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.45) 45%, transparent 70%)',
+                  backgroundSize: '200% 100%',
+                  WebkitMask:
+                    'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+                  WebkitMaskComposite: 'xor',
+                  maskComposite: 'exclude',
+                }}
+              />
               <span className="auth-icon absolute left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
                 <LockKey
                   size={16}
@@ -713,22 +730,44 @@ const LoginScreen = ({ onLogin }) => {
                   )}
                 </span>
               </button>
-            </div>
+            </motion.div>
           </div>
 
-          <button 
-            type="submit" 
+          <motion.button
+            type="submit"
             disabled={loading}
-            className="w-full mt-5 sm:mt-6 bg-sky-600 hover:bg-sky-500 text-white font-medium py-2.5 sm:py-3 rounded-xl transition-all shadow-lg shadow-sky-600/30 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            className="relative w-full mt-5 sm:mt-6 overflow-hidden rounded-xl bg-white text-slate-900 font-semibold py-2.5 sm:py-3 shadow-lg shadow-black/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            initial="rest"
+            animate="rest"
+            whileHover="hover"
+            whileTap={{ scale: 0.98 }}
           >
-            {loading ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <>
-                Enter Dashboard <ArrowRight size={16} />
-              </>
-            )}
-          </button>
+            <motion.span
+              className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-400"
+              variants={{
+                rest: { scale: 0, opacity: 0 },
+                hover: { scale: 18, opacity: 1 },
+              }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            />
+            <motion.span
+              className="relative z-10 flex items-center gap-2"
+              variants={{
+                rest: { color: '#0f172a' },
+                hover: { color: '#ffffff' },
+              }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {loading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  Enter Dashboard <ArrowRight size={16} />
+                </>
+              )}
+            </motion.span>
+          </motion.button>
           {error && <p className="text-xs text-red-400 text-center">{error}</p>}
         </form>
 
