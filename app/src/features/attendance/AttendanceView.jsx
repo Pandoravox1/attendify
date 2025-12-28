@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { getLocalTimeZone, parseDate } from '@internationalized/date';
 import { Calendar as CalendarIcon, ChevronDown, Download, Loader2, Maximize2, Minimize2 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 
 import { Button } from '../../components/ui/button';
 import { Calendar as CalendarRac } from '../../components/ui/calendar-rac';
@@ -23,6 +22,7 @@ import {
   normalizeSearchValue,
   parseLocalDateKey,
 } from '../../lib/attendify-utils';
+import { downloadCsv } from '../../lib/csv-utils';
 
 const COMMENT_STATUSES = new Set(['Sick', 'Excused', 'Unexcused']);
 
@@ -315,27 +315,17 @@ const AttendanceView = ({
       });
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(rows, {
-      header: ['Date', 'Day', 'Class', 'Student No.', 'Student Name', 'Status', 'Time', 'Comment'],
-    });
-    worksheet['!cols'] = [
-      { wch: 12 },
-      { wch: 8 },
-      { wch: 20 },
-      { wch: 16 },
-      { wch: 24 },
-      { wch: 12 },
-      { wch: 8 },
-      { wch: 28 },
+    const headers = ['Date', 'Day', 'Class', 'Student No.', 'Student Name', 'Status', 'Time', 'Comment'];
+    const csvRows = [
+      headers,
+      ...rows.map((row) => headers.map((key) => row[key] ?? '')),
     ];
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
 
     const safeClass = String(activeClass.name || 'class').replace(/[^a-z0-9-_]+/gi, '_');
     const fileName = start === end
-      ? `attendance_${safeClass}_${start}.xlsx`
-      : `attendance_${safeClass}_${start}_to_${end}.xlsx`;
-    XLSX.writeFile(workbook, fileName, { compression: true });
+      ? `attendance_${safeClass}_${start}.csv`
+      : `attendance_${safeClass}_${start}_to_${end}.csv`;
+    downloadCsv(csvRows, fileName);
 
     setIsExporting(false);
     setIsExportOpen(false);
@@ -756,7 +746,7 @@ const AttendanceView = ({
               ) : (
                 <>
                   <Download size={14} />
-                  Export .xlsx
+                  Export .csv
                 </>
               )}
             </button>

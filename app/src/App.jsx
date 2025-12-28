@@ -3507,6 +3507,7 @@ const App = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!isMounted) return;
       setIsAuthenticated(!!session);
+      setAuthReady(true);
     });
 
     return () => {
@@ -3527,7 +3528,11 @@ const App = () => {
     }
   }, [isAuthenticated, showIntro]);
 
-  const handleLogin = () => setIsAuthenticated(true);
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+    setAuthReady(true);
+    setShowIntro(false);
+  };
 
   const handleLogout = async () => {
     setIsAuthenticated(false);
